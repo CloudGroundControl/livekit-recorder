@@ -105,28 +105,48 @@ func (m *mockSink) Close() error {
 }
 
 func TestGetH264Writer(t *testing.T) {
-	mimeType := webrtc.MimeTypeH264
-	w, err := createMediaWriter(&mockSink{}, mimeType)
+	codec := webrtc.RTPCodecParameters{
+		RTPCodecCapability: webrtc.RTPCodecCapability{
+			MimeType: webrtc.MimeTypeH264,
+			Channels: 1,
+		},
+	}
+	w, err := createMediaWriter(&mockSink{}, codec)
 	require.NoError(t, err)
 	require.Implements(t, (*media.Writer)(nil), w)
 }
 
 func TestGetIVFWriter(t *testing.T) {
-	mimeType := webrtc.MimeTypeVP8
-	w, err := createMediaWriter(&mockSink{}, mimeType)
+	codec := webrtc.RTPCodecParameters{
+		RTPCodecCapability: webrtc.RTPCodecCapability{
+			MimeType: webrtc.MimeTypeVP8,
+			Channels: 1,
+		},
+	}
+	w, err := createMediaWriter(&mockSink{}, codec)
 	require.NoError(t, err)
 	require.Implements(t, (*media.Writer)(nil), w)
 }
 
 func TestGetOGGWriter(t *testing.T) {
-	mimeType := webrtc.MimeTypeOpus
-	w, err := createMediaWriter(&mockSink{}, mimeType)
+	codec := webrtc.RTPCodecParameters{
+		RTPCodecCapability: webrtc.RTPCodecCapability{
+			MimeType: webrtc.MimeTypeOpus,
+			Channels: 2,
+		},
+	}
+	w, err := createMediaWriter(&mockSink{}, codec)
 	require.NoError(t, err)
 	require.Implements(t, (*media.Writer)(nil), w)
 }
 
 func TestGetUnsupportedWriter(t *testing.T) {
-	mimeType := webrtc.MimeTypeAV1
-	_, err := createMediaWriter(&mockSink{}, mimeType)
+	codec := webrtc.RTPCodecParameters{
+		RTPCodecCapability: webrtc.RTPCodecCapability{
+			MimeType: webrtc.MimeTypeAV1,
+			Channels: 1,
+		},
+	}
+	_, err := createMediaWriter(&mockSink{}, codec)
 	require.ErrorIs(t, ErrMediaNotSupported, err)
 }

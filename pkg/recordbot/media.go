@@ -58,8 +58,8 @@ func getMediaFilename(fileID string, mimeType string) (string, error) {
 	return fmt.Sprintf("%s.%s", fileID, ext), nil
 }
 
-func createMediaWriter(out io.Writer, mimeType string) (media.Writer, error) {
-	ext, err := getMediaExtension(mimeType)
+func createMediaWriter(out io.Writer, codec webrtc.RTPCodecParameters) (media.Writer, error) {
+	ext, err := getMediaExtension(codec.MimeType)
 	if err != nil {
 		return nil, err
 	}
@@ -69,7 +69,7 @@ func createMediaWriter(out io.Writer, mimeType string) (media.Writer, error) {
 	case mediaH264:
 		return h264writer.NewWith(out), nil
 	case mediaOGG:
-		return oggwriter.NewWith(out, 48000, 1)
+		return oggwriter.NewWith(out, 48000, codec.Channels)
 	default:
 		return nil, ErrMediaNotSupported
 	}

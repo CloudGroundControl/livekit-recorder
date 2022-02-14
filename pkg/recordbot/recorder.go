@@ -60,7 +60,7 @@ func (r *recorder) startRecording(track *webrtc.TrackRemote) {
 	var err error
 
 	// If we can't instantiate media writer, stop
-	writer, err := createMediaWriter(r.sink, track.Codec().MimeType)
+	writer, err := createMediaWriter(r.sink, track.Codec())
 	if err != nil {
 		logger.Warnw("cannot create media writer", err, "codec", track.Codec().MimeType)
 		return
