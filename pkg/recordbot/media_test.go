@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/pion/webrtc/v3"
+	"github.com/pion/webrtc/v3/pkg/media"
 	"github.com/stretchr/testify/require"
 )
 
@@ -87,4 +88,45 @@ func TestGetFilenameFailUnsupportedMedia(t *testing.T) {
 	fileID := "test"
 	_, err := getMediaFilename(fileID, mimeType)
 	require.ErrorIs(t, err, ErrMediaNotSupported)
+}
+
+type mockSink struct{}
+
+func (m *mockSink) Name() string {
+	return "mock"
+}
+
+func (m *mockSink) Write(data []byte) (int, error) {
+	return 1, nil
+}
+
+func (m *mockSink) Close() error {
+	return nil
+}
+
+func TestGetH264Writer(t *testing.T) {
+	mimeType := webrtc.MimeTypeH264
+	w, err := createMediaWriter(&mockSink{}, mimeType)
+	require.NoError(t, err)
+	require.Implements(t, (*media.Writer)(nil), w)
+}
+
+func TestGetIVFWriter(t *testing.T) {
+	mimeType := webrtc.MimeTypeVP8
+	w, err := createMediaWriter(&mockSink{}, mimeType)
+	require.NoError(t, err)
+	require.Implements(t, (*media.Writer)(nil), w)
+}
+
+func TestGetOGGWriter(t *testing.T) {
+	mimeType := webrtc.MimeTypeOpus
+	w, err := createMediaWriter(&mockSink{}, mimeType)
+	require.NoError(t, err)
+	require.Implements(t, (*media.Writer)(nil), w)
+}
+
+func TestGetUnsupportedWriter(t *testing.T) {
+	mimeType := webrtc.MimeTypeAV1
+	_, err := createMediaWriter(&mockSink{}, mimeType)
+	require.ErrorIs(t, ErrMediaNotSupported, err)
 }
