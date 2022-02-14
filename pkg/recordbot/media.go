@@ -6,6 +6,8 @@ import (
 	"io"
 	"strings"
 
+	"github.com/cloudgroundcontrol/livekit-recordbot/pkg/samplebuilder"
+	"github.com/pion/rtp/codecs"
 	"github.com/pion/webrtc/v3"
 	"github.com/pion/webrtc/v3/pkg/media"
 	"github.com/pion/webrtc/v3/pkg/media/h264writer"
@@ -73,4 +75,18 @@ func createMediaWriter(out io.Writer, codec webrtc.RTPCodecParameters) (media.Wr
 	default:
 		return nil, ErrMediaNotSupported
 	}
+}
+
+func createSampleBuilder(codec webrtc.RTPCodecParameters) *samplebuilder.SampleBuilder {
+	switch codec.MimeType {
+	case webrtc.MimeTypeVP8:
+		return samplebuilder.New(maxLate, &codecs.VP8Packet{}, codec.ClockRate)
+	case webrtc.MimeTypeVP9:
+		return samplebuilder.New(maxLate, &codecs.VP9Packet{}, codec.ClockRate)
+	case webrtc.MimeTypeH264:
+		return samplebuilder.New(maxLate, &codecs.H264Packet{}, codec.ClockRate)
+	case webrtc.MimeTypeOpus:
+		return samplebuilder.New(maxLate, &codecs.OpusPacket{}, codec.ClockRate)
+	}
+	return nil
 }

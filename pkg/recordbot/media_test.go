@@ -150,3 +150,58 @@ func TestGetUnsupportedWriter(t *testing.T) {
 	_, err := createMediaWriter(&mockSink{}, codec)
 	require.ErrorIs(t, ErrMediaNotSupported, err)
 }
+
+func TestVP8SampleBuilder(t *testing.T) {
+	codec := webrtc.RTPCodecParameters{
+		RTPCodecCapability: webrtc.RTPCodecCapability{
+			MimeType: webrtc.MimeTypeVP8,
+			Channels: 1,
+		},
+	}
+	sb := createSampleBuilder(codec)
+	require.NotNil(t, sb)
+}
+
+func TestVP9SampleBuilder(t *testing.T) {
+	codec := webrtc.RTPCodecParameters{
+		RTPCodecCapability: webrtc.RTPCodecCapability{
+			MimeType: webrtc.MimeTypeVP9,
+			Channels: 1,
+		},
+	}
+	sb := createSampleBuilder(codec)
+	require.NotNil(t, sb)
+}
+
+func TestH264SampleBuilder(t *testing.T) {
+	codec := webrtc.RTPCodecParameters{
+		RTPCodecCapability: webrtc.RTPCodecCapability{
+			MimeType: webrtc.MimeTypeH264,
+			Channels: 1,
+		},
+	}
+	sb := createSampleBuilder(codec)
+	require.NotNil(t, sb)
+}
+
+func TestOpusSampleBuilder(t *testing.T) {
+	codec := webrtc.RTPCodecParameters{
+		RTPCodecCapability: webrtc.RTPCodecCapability{
+			MimeType: webrtc.MimeTypeOpus,
+			Channels: 1,
+		},
+	}
+	sb := createSampleBuilder(codec)
+	require.NotNil(t, sb)
+}
+
+func TestUnsupportedCodecSampleBuilder(t *testing.T) {
+	codec := webrtc.RTPCodecParameters{
+		RTPCodecCapability: webrtc.RTPCodecCapability{
+			MimeType: webrtc.MimeTypeAV1,
+			Channels: 1,
+		},
+	}
+	sb := createSampleBuilder(codec)
+	require.Nil(t, sb)
+}

@@ -3,8 +3,8 @@ package recordbot
 import (
 	"github.com/cloudgroundcontrol/livekit-recordbot/pkg/samplebuilder"
 	"github.com/livekit/protocol/logger"
-	"github.com/pion/rtp/codecs"
 	"github.com/pion/webrtc/v3"
+	"github.com/pion/webrtc/v3/pkg/media"
 )
 
 type Recorder interface {
@@ -18,6 +18,7 @@ type recorder struct {
 	done   chan struct{}
 	closed chan struct{}
 	sb     *samplebuilder.SampleBuilder
+	mw     media.Writer
 }
 
 type RecorderHooks struct {
@@ -31,21 +32,12 @@ const (
 func NewTrackRecorder(track *webrtc.TrackRemote, sink RecorderSink, hooks *RecorderHooks) (Recorder, error) {
 	done := make(chan struct{}, 1)
 	closed := make(chan struct{}, 1)
-
-	var builder *samplebuilder.SampleBuilder
-	switch track.Codec().MimeType {
-	case webrtc.MimeTypeVP8:
-		builder = samplebuilder.New(maxLate, &codecs.VP8Packet{}, track.Codec().ClockRate)
-	case webrtc.MimeTypeVP9:
-		builder = samplebuilder.New(maxLate, &codecs.VP9Packet{}, track.Codec().ClockRate)
-	case webrtc.MimeTypeH264:
-		builder = samplebuilder.New(maxLate, &codecs.H264Packet{}, track.Codec().ClockRate)
-	case webrtc.MimeTypeOpus:
-		builder = samplebuilder.New(maxLate, &codecs.OpusPacket{}, track.Codec().ClockRate)
-	default:
-		return nil, ErrMediaNotSupported
+	sb := createSampleBuilder(track.Codec())
+	mw, err := createMediaWriter(sink, track.Codec())
+	if err != nil {
+		return nil, err
 	}
-	return &recorder{sink, hooks, done, closed, builder}, nil
+	return &recorder{sink, hooks, done, closed, sb, mw}, nil
 }
 
 func (r *recorder) Start(track *webrtc.TrackRemote) {
@@ -57,16 +49,8 @@ func (r *recorder) Stop() {
 }
 
 func (r *recorder) startRecording(track *webrtc.TrackRemote) {
-	var err error
-
-	// If we can't instantiate media writer, stop
-	writer, err := createMediaWriter(r.sink, track.Codec())
-	if err != nil {
-		logger.Warnw("cannot create media writer", err, "codec", track.Codec().MimeType)
-		return
-	}
-
 	// Clean-up process
+	var err error
 	defer func() {
 		// Log error during recording
 		if err != nil {
@@ -83,6 +67,7 @@ func (r *recorder) startRecording(track *webrtc.TrackRemote) {
 		close(r.closed)
 	}()
 
+	// Process RTP packets forever until stopped
 	for {
 		select {
 		case <-r.done:
@@ -94,16 +79,26 @@ func (r *recorder) startRecording(track *webrtc.TrackRemote) {
 				return
 			}
 
-			// Push packet to sample buffer
-			r.sb.Push(packet)
+			// If the codec is supported by the sample builder, use that to write. Otherwise, dump to sink
+			if r.sb != nil {
+				// Push packet to sample buffer
+				r.sb.Push(packet)
 
-			// Write the buffered packets to sink
-			for _, p := range r.sb.PopPackets() {
-				err = writer.WriteRTP(p)
+				// Write the buffered packets to sink
+				for _, p := range r.sb.PopPackets() {
+					err = r.mw.WriteRTP(p)
+					if err != nil {
+						return
+					}
+				}
+			} else {
+				// Dump to sink if sample buffer isn't supported
+				err = r.mw.WriteRTP(packet)
 				if err != nil {
 					return
 				}
 			}
+
 		}
 	}
 
