@@ -3,6 +3,7 @@ package recordbot
 import (
 	"github.com/cloudgroundcontrol/livekit-recordbot/pkg/samplebuilder"
 	"github.com/livekit/protocol/logger"
+	"github.com/pion/rtp"
 	"github.com/pion/webrtc/v3"
 	"github.com/pion/webrtc/v3/pkg/media"
 )
@@ -68,40 +69,44 @@ func (r *recorder) startRecording(track *webrtc.TrackRemote) {
 	}()
 
 	// Process RTP packets forever until stopped
+	var packet *rtp.Packet
 	for {
 		select {
 		case <-r.done:
 			return
 		default:
 			// Read RTP stream
-			packet, _, err := track.ReadRTP()
+			packet, _, err = track.ReadRTP()
 			if err != nil {
 				return
 			}
 
-			// If the codec is supported by the sample builder, use that to write. Otherwise, dump to sink
-			if r.sb != nil {
-				// Push packet to sample buffer
-				r.sb.Push(packet)
-
-				// Write the buffered packets to sink
-				for _, p := range r.sb.PopPackets() {
-					err = r.mw.WriteRTP(p)
-					if err != nil {
-						return
-					}
-				}
-			} else {
-				// Dump to sink if sample buffer isn't supported
-				err = r.mw.WriteRTP(packet)
-				if err != nil {
-					return
-				}
+			// Write packet to sink
+			err = r.writeToSink(packet)
+			if err != nil {
+				return
 			}
-
 		}
 	}
+}
 
+func (r *recorder) writeToSink(p *rtp.Packet) (err error) {
+	// If no sample buffer is used, write directly to sink
+	if r.sb == nil {
+		return r.mw.WriteRTP(p)
+	}
+
+	// If sample buffer is used, write to buffer first
+	r.sb.Push(p)
+
+	// And from the buffered packets, write to sink
+	for _, p := range r.sb.PopPackets() {
+		err = r.mw.WriteRTP(p)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (r *recorder) stopRecording() {
