@@ -1,7 +1,9 @@
 package recordbot
 
 import (
+	"github.com/cloudgroundcontrol/livekit-recordbot/pkg/samplebuilder"
 	"github.com/livekit/protocol/logger"
+	"github.com/pion/rtp/codecs"
 	"github.com/pion/webrtc/v3"
 )
 
@@ -15,16 +17,35 @@ type recorder struct {
 	hooks  *RecorderHooks
 	done   chan struct{}
 	closed chan struct{}
+	sb     *samplebuilder.SampleBuilder
 }
 
 type RecorderHooks struct {
 	OnFinishRecording func(filename string)
 }
 
-func NewTrackRecorder(sink RecorderSink, hooks *RecorderHooks) (Recorder, error) {
+const (
+	maxLate = 200
+)
+
+func NewTrackRecorder(track *webrtc.TrackRemote, sink RecorderSink, hooks *RecorderHooks) (Recorder, error) {
 	done := make(chan struct{}, 1)
 	closed := make(chan struct{}, 1)
-	return &recorder{sink, hooks, done, closed}, nil
+
+	var builder *samplebuilder.SampleBuilder
+	switch track.Codec().MimeType {
+	case webrtc.MimeTypeVP8:
+		builder = samplebuilder.New(maxLate, &codecs.VP8Packet{}, track.Codec().ClockRate)
+	case webrtc.MimeTypeVP9:
+		builder = samplebuilder.New(maxLate, &codecs.VP9Packet{}, track.Codec().ClockRate)
+	case webrtc.MimeTypeH264:
+		builder = samplebuilder.New(maxLate, &codecs.H264Packet{}, track.Codec().ClockRate)
+	case webrtc.MimeTypeOpus:
+		builder = samplebuilder.New(maxLate, &codecs.OpusPacket{}, track.Codec().ClockRate)
+	default:
+		return nil, ErrMediaNotSupported
+	}
+	return &recorder{sink, hooks, done, closed, builder}, nil
 }
 
 func (r *recorder) Start(track *webrtc.TrackRemote) {
@@ -73,10 +94,15 @@ func (r *recorder) startRecording(track *webrtc.TrackRemote) {
 				return
 			}
 
-			// Write to sink
-			err = writer.WriteRTP(packet)
-			if err != nil {
-				return
+			// Push packet to sample buffer
+			r.sb.Push(packet)
+
+			// Write the buffered packets to sink
+			for _, p := range r.sb.PopPackets() {
+				err = writer.WriteRTP(p)
+				if err != nil {
+					return
+				}
 			}
 		}
 	}
