@@ -1,4 +1,4 @@
-package recordbot
+package recorder
 
 import (
 	"github.com/cloudgroundcontrol/livekit-recordbot/pkg/samplebuilder"
@@ -15,22 +15,13 @@ type Recorder interface {
 
 type recorder struct {
 	sink   RecorderSink
-	hooks  *RecorderHooks
 	done   chan struct{}
 	closed chan struct{}
 	sb     *samplebuilder.SampleBuilder
 	mw     media.Writer
 }
 
-type RecorderHooks struct {
-	OnFinishRecording func(filename string)
-}
-
-const (
-	maxLate = 200
-)
-
-func NewTrackRecorder(track *webrtc.TrackRemote, sink RecorderSink, hooks *RecorderHooks) (Recorder, error) {
+func NewTrackRecorder(track *webrtc.TrackRemote, sink RecorderSink) (Recorder, error) {
 	done := make(chan struct{}, 1)
 	closed := make(chan struct{}, 1)
 	sb := createSampleBuilder(track.Codec())
@@ -38,7 +29,7 @@ func NewTrackRecorder(track *webrtc.TrackRemote, sink RecorderSink, hooks *Recor
 	if err != nil {
 		return nil, err
 	}
-	return &recorder{sink, hooks, done, closed, sb, mw}, nil
+	return &recorder{sink, done, closed, sb, mw}, nil
 }
 
 func (r *recorder) Start(track *webrtc.TrackRemote) {

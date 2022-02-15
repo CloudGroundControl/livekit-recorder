@@ -1,4 +1,4 @@
-package recordbot
+package recorder
 
 import "os"
 

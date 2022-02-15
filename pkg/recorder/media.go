@@ -1,4 +1,4 @@
-package recordbot
+package recorder
 
 import (
 	"errors"
@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/cloudgroundcontrol/livekit-recordbot/pkg/samplebuilder"
+	"github.com/pion/rtp"
 	"github.com/pion/rtp/codecs"
 	"github.com/pion/webrtc/v3"
 	"github.com/pion/webrtc/v3/pkg/media"
@@ -23,49 +24,46 @@ const (
 	mediaH264 mediaExtension = "h264"
 )
 
-var ErrMediaNotSupported = errors.New("media not supported")
-
-func getMediaExtension(mimeType string) (mediaExtension, error) {
+func getMediaExtension(mimeType string) mediaExtension {
 	if strings.EqualFold(mimeType, webrtc.MimeTypeVP8) ||
 		strings.EqualFold(mimeType, webrtc.MimeTypeVP9) {
-		return mediaIVF, nil
+		return mediaIVF
 	}
 	if strings.EqualFold(mimeType, webrtc.MimeTypeH264) {
-		return mediaH264, nil
+		return mediaH264
 	}
 	if strings.EqualFold(mimeType, webrtc.MimeTypeG722) ||
 		strings.EqualFold(mimeType, webrtc.MimeTypeOpus) ||
 		strings.EqualFold(mimeType, webrtc.MimeTypePCMA) ||
 		strings.EqualFold(mimeType, webrtc.MimeTypePCMU) {
-		return mediaOGG, nil
+		return mediaOGG
 	}
-	return "", ErrMediaNotSupported
+	return ""
 }
 
-var ErrEmptyFileID = errors.New("empty file ID")
-var ErrFileIDContainsExtension = errors.New("file ID contains extension")
+var (
+	ErrEmptyFileID       = errors.New("empty file ID")
+	ErrExtensionInFileID = errors.New("extension in file ID")
+	ErrMediaNotSupported = errors.New("media not supported")
+)
 
 func getMediaFilename(fileID string, mimeType string) (string, error) {
 	if fileID == "" {
 		return "", ErrEmptyFileID
 	} else if strings.Contains(fileID, ".") {
-		return "", ErrFileIDContainsExtension
+		return "", ErrExtensionInFileID
 	}
 
-	ext, err := getMediaExtension(mimeType)
-	if err != nil {
-		return "", err
+	ext := getMediaExtension(mimeType)
+	if ext == "" {
+		return "", ErrMediaNotSupported
 	}
 
 	return fmt.Sprintf("%s.%s", fileID, ext), nil
 }
 
 func createMediaWriter(out io.Writer, codec webrtc.RTPCodecParameters) (media.Writer, error) {
-	ext, err := getMediaExtension(codec.MimeType)
-	if err != nil {
-		return nil, err
-	}
-	switch ext {
+	switch getMediaExtension(codec.MimeType) {
 	case mediaIVF:
 		return ivfwriter.NewWith(out)
 	case mediaH264:
@@ -77,16 +75,21 @@ func createMediaWriter(out io.Writer, codec webrtc.RTPCodecParameters) (media.Wr
 	}
 }
 
+const sampleMaxLate = 200
+
 func createSampleBuilder(codec webrtc.RTPCodecParameters) *samplebuilder.SampleBuilder {
+	var depacketizer rtp.Depacketizer
 	switch codec.MimeType {
 	case webrtc.MimeTypeVP8:
-		return samplebuilder.New(maxLate, &codecs.VP8Packet{}, codec.ClockRate)
+		depacketizer = &codecs.VP8Packet{}
 	case webrtc.MimeTypeVP9:
-		return samplebuilder.New(maxLate, &codecs.VP9Packet{}, codec.ClockRate)
+		depacketizer = &codecs.VP9Packet{}
 	case webrtc.MimeTypeH264:
-		return samplebuilder.New(maxLate, &codecs.H264Packet{}, codec.ClockRate)
+		depacketizer = &codecs.H264Packet{}
 	case webrtc.MimeTypeOpus:
-		return samplebuilder.New(maxLate, &codecs.OpusPacket{}, codec.ClockRate)
+		depacketizer = &codecs.OpusPacket{}
+	default:
+		return nil
 	}
-	return nil
+	return samplebuilder.New(sampleMaxLate, depacketizer, codec.ClockRate)
 }

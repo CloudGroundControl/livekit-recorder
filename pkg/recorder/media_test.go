@@ -1,4 +1,4 @@
-package recordbot
+package recorder
 
 import (
 	"testing"
@@ -9,55 +9,48 @@ import (
 )
 
 func TestExtensionG722(t *testing.T) {
-	ext, err := getMediaExtension(webrtc.MimeTypeG722)
-	require.NoError(t, err)
+	ext := getMediaExtension(webrtc.MimeTypeG722)
 	require.Equal(t, mediaOGG, ext)
 }
 
 func TestExtensionOpus(t *testing.T) {
-	ext, err := getMediaExtension(webrtc.MimeTypeOpus)
-	require.NoError(t, err)
+	ext := getMediaExtension(webrtc.MimeTypeOpus)
 	require.Equal(t, mediaOGG, ext)
 }
 
 func TestExtensionPCMU(t *testing.T) {
-	ext, err := getMediaExtension(webrtc.MimeTypePCMU)
-	require.NoError(t, err)
-	require.Equal(t, mediaOGG, ext)
+	ext := getMediaExtension(webrtc.MimeTypePCMU)
+	require.EqualValues(t, mediaOGG, ext)
 }
 
 func TestExtensionPCMA(t *testing.T) {
-	ext, err := getMediaExtension(webrtc.MimeTypePCMA)
-	require.NoError(t, err)
+	ext := getMediaExtension(webrtc.MimeTypePCMA)
 	require.Equal(t, mediaOGG, ext)
 }
 
 func TestExtensionVP8(t *testing.T) {
-	ext, err := getMediaExtension(webrtc.MimeTypeVP8)
-	require.NoError(t, err)
+	ext := getMediaExtension(webrtc.MimeTypeVP8)
 	require.Equal(t, mediaIVF, ext)
 }
 
 func TestExtensionVP9(t *testing.T) {
-	ext, err := getMediaExtension(webrtc.MimeTypeVP9)
-	require.NoError(t, err)
+	ext := getMediaExtension(webrtc.MimeTypeVP9)
 	require.Equal(t, mediaIVF, ext)
 }
 
 func TestExtensionH264(t *testing.T) {
-	ext, err := getMediaExtension(webrtc.MimeTypeH264)
-	require.NoError(t, err)
+	ext := getMediaExtension(webrtc.MimeTypeH264)
 	require.Equal(t, mediaH264, ext)
 }
 
-func TestExtensionH265Fail(t *testing.T) {
-	_, err := getMediaExtension(webrtc.MimeTypeH265)
-	require.ErrorIs(t, err, ErrMediaNotSupported)
+func TestExtensionH265GetEmptyString(t *testing.T) {
+	ext := getMediaExtension(webrtc.MimeTypeH265)
+	require.Equal(t, mediaExtension(""), ext)
 }
 
-func TestExtensionAV1Fail(t *testing.T) {
-	_, err := getMediaExtension(webrtc.MimeTypeAV1)
-	require.ErrorIs(t, err, ErrMediaNotSupported)
+func TestExtensionAV1GetEmptyString(t *testing.T) {
+	ext := getMediaExtension(webrtc.MimeTypeAV1)
+	require.Equal(t, mediaExtension(""), ext)
 }
 
 func TestGetFilenameSuccess(t *testing.T) {
@@ -80,7 +73,7 @@ func TestGetFilenameFailFileIDContainsExtension(t *testing.T) {
 	mimeType := webrtc.MimeTypeAV1
 	fileID := "test.ivf"
 	_, err := getMediaFilename(fileID, mimeType)
-	require.ErrorIs(t, err, ErrFileIDContainsExtension)
+	require.ErrorIs(t, err, ErrExtensionInFileID)
 }
 
 func TestGetFilenameFailUnsupportedMedia(t *testing.T) {
