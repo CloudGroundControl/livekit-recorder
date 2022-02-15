@@ -83,64 +83,58 @@ func TestGetFilenameFailUnsupportedMedia(t *testing.T) {
 	require.ErrorIs(t, err, ErrMediaNotSupported)
 }
 
-type mockSink struct{}
-
-func (m *mockSink) Name() string {
-	return "mock"
-}
-
-func (m *mockSink) Write(data []byte) (int, error) {
-	return 1, nil
-}
-
-func (m *mockSink) Close() error {
-	return nil
-}
-
 func TestGetH264Writer(t *testing.T) {
+	sink := NewBufferSink("")
+	defer sink.Close()
 	codec := webrtc.RTPCodecParameters{
 		RTPCodecCapability: webrtc.RTPCodecCapability{
 			MimeType: webrtc.MimeTypeH264,
 			Channels: 1,
 		},
 	}
-	w, err := createMediaWriter(&mockSink{}, codec)
+	mw, err := createMediaWriter(sink, codec)
 	require.NoError(t, err)
-	require.Implements(t, (*media.Writer)(nil), w)
+	require.Implements(t, (*media.Writer)(nil), mw)
 }
 
 func TestGetIVFWriter(t *testing.T) {
+	sink := NewBufferSink("")
+	defer sink.Close()
 	codec := webrtc.RTPCodecParameters{
 		RTPCodecCapability: webrtc.RTPCodecCapability{
 			MimeType: webrtc.MimeTypeVP8,
 			Channels: 1,
 		},
 	}
-	w, err := createMediaWriter(&mockSink{}, codec)
+	mw, err := createMediaWriter(sink, codec)
 	require.NoError(t, err)
-	require.Implements(t, (*media.Writer)(nil), w)
+	require.Implements(t, (*media.Writer)(nil), mw)
 }
 
 func TestGetOGGWriter(t *testing.T) {
+	sink := NewBufferSink("")
+	defer sink.Close()
 	codec := webrtc.RTPCodecParameters{
 		RTPCodecCapability: webrtc.RTPCodecCapability{
 			MimeType: webrtc.MimeTypeOpus,
 			Channels: 2,
 		},
 	}
-	w, err := createMediaWriter(&mockSink{}, codec)
+	mw, err := createMediaWriter(sink, codec)
 	require.NoError(t, err)
-	require.Implements(t, (*media.Writer)(nil), w)
+	require.Implements(t, (*media.Writer)(nil), mw)
 }
 
 func TestGetUnsupportedWriter(t *testing.T) {
+	sink := NewBufferSink("")
+	defer sink.Close()
 	codec := webrtc.RTPCodecParameters{
 		RTPCodecCapability: webrtc.RTPCodecCapability{
 			MimeType: webrtc.MimeTypeAV1,
 			Channels: 1,
 		},
 	}
-	_, err := createMediaWriter(&mockSink{}, codec)
+	_, err := createMediaWriter(sink, codec)
 	require.ErrorIs(t, ErrMediaNotSupported, err)
 }
 
