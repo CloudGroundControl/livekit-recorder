@@ -9,7 +9,7 @@ import (
 )
 
 type Recorder interface {
-	Start(track *webrtc.TrackRemote)
+	Start()
 	Stop()
 }
 
@@ -17,6 +17,7 @@ type recorder struct {
 	sink   RecorderSink
 	done   chan struct{}
 	closed chan struct{}
+	track  *webrtc.TrackRemote
 	sb     *samplebuilder.SampleBuilder
 	mw     media.Writer
 }
@@ -29,18 +30,18 @@ func NewTrackRecorder(track *webrtc.TrackRemote, sink RecorderSink) (Recorder, e
 	if err != nil {
 		return nil, err
 	}
-	return &recorder{sink, done, closed, sb, mw}, nil
+	return &recorder{sink, done, closed, track, sb, mw}, nil
 }
 
-func (r *recorder) Start(track *webrtc.TrackRemote) {
-	go r.startRecording(track)
+func (r *recorder) Start() {
+	go r.startRecording()
 }
 
 func (r *recorder) Stop() {
 	go r.stopRecording()
 }
 
-func (r *recorder) startRecording(track *webrtc.TrackRemote) {
+func (r *recorder) startRecording() {
 	// Clean-up process
 	var err error
 	defer func() {
@@ -67,7 +68,7 @@ func (r *recorder) startRecording(track *webrtc.TrackRemote) {
 			return
 		default:
 			// Read RTP stream
-			packet, _, err = track.ReadRTP()
+			packet, _, err = r.track.ReadRTP()
 			if err != nil {
 				return
 			}
