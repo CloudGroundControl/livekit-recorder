@@ -4,3 +4,6 @@
 # Editor
 .vscode/
 .idea/
+
+# Test outputs
+*.out
