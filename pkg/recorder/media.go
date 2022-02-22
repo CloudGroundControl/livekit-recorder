@@ -47,7 +47,7 @@ var (
 	ErrMediaNotSupported = errors.New("media not supported")
 )
 
-func getMediaFilename(fileID string, mimeType string) (string, error) {
+func GetMediaFilename(fileID string, mimeType string) (string, error) {
 	if fileID == "" {
 		return "", ErrEmptyFileID
 	} else if strings.Contains(fileID, ".") {

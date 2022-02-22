@@ -36,7 +36,12 @@ func (ec *egressController) StartRecording(c echo.Context) error {
 	}
 
 	// Call service
-	err := ec.Service.StartRecording(c.Request().Context(), egress.StartRecordingRequest{})
+	err := ec.Service.StartRecording(c.Request().Context(), egress.StartRecordingRequest{
+		Room:        data.Room,
+		Participant: data.Participant,
+		Channel:     egress.OutputChannel(data.Channel),
+		File:        data.File,
+	})
 	if err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, err)
 	}
@@ -53,7 +58,10 @@ func (ec *egressController) StopRecording(c echo.Context) error {
 	}
 
 	// Call service
-	err := ec.Service.StopRecording(c.Request().Context(), egress.StopRecordingRequest{})
+	err := ec.Service.StopRecording(c.Request().Context(), egress.StopRecordingRequest{
+		Room:        data.Room,
+		Participant: data.Participant,
+	})
 	if err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, err)
 	}

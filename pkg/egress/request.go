@@ -3,16 +3,15 @@ package egress
 import "github.com/pion/webrtc/v3"
 
 type StartRecordingRequest struct {
-	Room        string `json:"room"`
-	Participant string `json:"participant"`
-	Channel     string `json:"channel"`
-	File        string `json:"file"`
+	Room        string        `json:"room"`
+	Participant string        `json:"participant"`
+	File        string        `json:"file"`
+	Channel     OutputChannel `json:"channel"`
 }
 
 type StopRecordingRequest struct {
 	Room        string `json:"room"`
 	Participant string `json:"participant"`
-	Sink        string `json:"sink"`
 }
 
 type OutputChannel string

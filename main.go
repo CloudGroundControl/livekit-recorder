@@ -22,9 +22,12 @@ func getEnvOrFail(key string) string {
 func main() {
 	// Get env variables
 	port := getEnvOrFail("APP_PORT")
+	lkURL := getEnvOrFail("LIVEKIT_URL")
+	lkAPIKey := getEnvOrFail("LIVEKIT_API_KEY")
+	lkAPISecret := getEnvOrFail("LIVEKIT_API_SECRET")
 
 	// Initialise egress service and controller
-	service := egress.NewService()
+	service := egress.NewService(lkURL, lkAPIKey, lkAPISecret)
 	controller := rest.NewEgressController(service)
 
 	// Initialise server
