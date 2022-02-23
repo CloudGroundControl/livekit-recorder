@@ -27,7 +27,10 @@ func main() {
 	lkAPISecret := getEnvOrFail("LIVEKIT_API_SECRET")
 
 	// Initialise egress service and controller
-	service := egress.NewService(lkURL, lkAPIKey, lkAPISecret)
+	service, err := egress.NewService(lkURL, lkAPIKey, lkAPISecret)
+	if err != nil {
+		log.Fatal(err)
+	}
 	controller := rest.NewEgressController(service)
 
 	// Initialise server

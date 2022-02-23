@@ -7,3 +7,10 @@
 
 # Test outputs
 *.out
+
+# Media files
+*.mp4
+*.webm
+*.ivf
+*.h264
+*.ogg

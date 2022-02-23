@@ -1,6 +1,7 @@
 package rest
 
 import (
+	"errors"
 	"net/http"
 
 	"github.com/cloudgroundcontrol/livekit-egress/pkg/egress"
@@ -14,19 +15,19 @@ type egressController struct {
 type StartRecordingRequest struct {
 	Room        string `json:"room"`
 	Participant string `json:"participant"`
-	Channel     string `json:"channel"`
-	File        string `json:"file"`
+	Output      string `json:"output"`
 }
 
 type StopRecordingRequest struct {
 	Room        string `json:"room"`
 	Participant string `json:"participant"`
-	Sink        string `json:"sink"`
 }
 
 func NewEgressController(service egress.Service) egressController {
 	return egressController{service}
 }
+
+var ErrEmptyFields = errors.New("one or more fields is empty")
 
 func (ec *egressController) StartRecording(c echo.Context) error {
 	// Bind request data
@@ -35,12 +36,16 @@ func (ec *egressController) StartRecording(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, err)
 	}
 
+	// Sanitise request
+	if data.Room == "" || data.Participant == "" || data.Output == "" {
+		return echo.NewHTTPError(http.StatusBadRequest, ErrEmptyFields)
+	}
+
 	// Call service
 	err := ec.Service.StartRecording(c.Request().Context(), egress.StartRecordingRequest{
 		Room:        data.Room,
 		Participant: data.Participant,
-		Channel:     egress.OutputChannel(data.Channel),
-		File:        data.File,
+		Output:      data.Output,
 	})
 	if err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, err)
@@ -55,6 +60,11 @@ func (ec *egressController) StopRecording(c echo.Context) error {
 	data := new(StopRecordingRequest)
 	if err := c.Bind(data); err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, err)
+	}
+
+	// Sanitise request
+	if data.Room == "" || data.Participant == "" {
+		return echo.NewHTTPError(http.StatusBadRequest, ErrEmptyFields)
 	}
 
 	// Call service

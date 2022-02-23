@@ -24,6 +24,7 @@ type TrackRequest struct {
 func createBot(url string, token string) (*bot, error) {
 	b := &bot{
 		lock:      sync.Mutex{},
+		room:      nil,
 		pending:   make(map[string]TrackRequest),
 		recorders: make(map[string]recorder.Recorder),
 	}
@@ -39,10 +40,13 @@ func createBot(url string, token string) (*bot, error) {
 	return b, nil
 }
 
-func (b *bot) pushTrackRequest(req TrackRequest) {
+func (b *bot) pushTrackRequests(reqs []TrackRequest) {
 	b.lock.Lock()
-	b.pending[req.SID] = req
-	b.lock.Unlock()
+	defer b.lock.Unlock()
+
+	for _, req := range reqs {
+		b.pending[req.SID] = req
+	}
 }
 
 func (b *bot) OnTrackSubscribed(track *webrtc.TrackRemote, publication *lksdk.RemoteTrackPublication, rp *lksdk.RemoteParticipant) {

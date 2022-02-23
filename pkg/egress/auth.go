@@ -11,6 +11,10 @@ type authProvider struct {
 	APISecret string
 }
 
+func NewAuthProvider(key string, secret string) *authProvider {
+	return &authProvider{key, secret}
+}
+
 func (p *authProvider) buildEmptyToken(room string, identity string) (string, error) {
 	at := auth.NewAccessToken(p.APIKey, p.APISecret)
 	f := false

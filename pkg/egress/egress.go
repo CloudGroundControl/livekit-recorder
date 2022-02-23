@@ -2,10 +2,12 @@ package egress
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"sync"
 
 	"github.com/livekit/protocol/livekit"
+	"github.com/livekit/protocol/utils"
 	lksdk "github.com/livekit/server-sdk-go"
 )
 
@@ -15,51 +17,75 @@ type Service interface {
 }
 
 type service struct {
-	url   string
-	auth  authProvider
-	lock  sync.Mutex
-	bots  map[string]*bot
-	name  string
+	// Info
+	name string
+	url  string
+
+	// State
+	lock sync.Mutex
+	bots map[string]*bot
+
+	// Services
+	auth  *authProvider
 	lksvc *lksdk.RoomServiceClient
 }
 
-func NewService(url string, apiKey string, apiSecret string) Service {
-	auth := authProvider{APIKey: apiKey, APISecret: apiSecret}
-	httpUrl := strings.ReplaceAll(url, "ws", "http")
+const recordbotPrefix = "RB_"
+
+var ErrUrlMustHaveWS = errors.New("url must contain either ws:// or wss://")
+
+func NewService(url string, apiKey string, apiSecret string) (Service, error) {
+	// By convention, we're passing ws://... in `url` , but for
+	// lksdk.NewRoomServiceClient, it expects http:// . Need to check for wss too
+	var tcpUrl string
+	if strings.Contains(url, "ws://") {
+		tcpUrl = strings.ReplaceAll(url, "ws://", "http://")
+	} else if strings.Contains(url, "wss://") {
+		tcpUrl = strings.ReplaceAll(url, "wss://", "https://")
+	} else {
+		return nil, ErrUrlMustHaveWS
+	}
+
+	// Initialise services
+	auth := NewAuthProvider(apiKey, apiSecret)
+	lksvc := lksdk.NewRoomServiceClient(tcpUrl, apiKey, apiSecret)
+
 	return &service{
+		name:  utils.NewGuid(recordbotPrefix),
 		url:   url,
-		auth:  auth,
 		lock:  sync.Mutex{},
 		bots:  make(map[string]*bot),
-		name:  "egress",
-		lksvc: lksdk.NewRoomServiceClient(httpUrl, apiKey, apiSecret),
-	}
+		auth:  auth,
+		lksvc: lksvc,
+	}, nil
 }
 
 func (s *service) StartRecording(ctx context.Context, req StartRecordingRequest) error {
 	s.lock.Lock()
 	defer s.lock.Unlock()
 
-	// Check if bot is already in the room; if not, create one and join
-	var b *bot
-	b, ok := s.bots[req.Room]
-	if !ok {
+	// Check if bot is already in the room; if not, create one
+	_, found := s.bots[req.Room]
+	if !found {
 		// Create empty token
 		token, err := s.auth.buildEmptyToken(req.Room, s.name)
 		if err != nil {
 			return err
 		}
 
-		// Create bot and attach
-		b, err = createBot(s.url, token)
+		// Create bot
+		b, err := createBot(s.url, token)
 		if err != nil {
 			return err
 		}
+
+		// Attach the bot
 		s.bots[req.Room] = b
 	}
+	b := s.bots[req.Room]
 
 	// Get participant info
-	rp, err := s.lksvc.GetParticipant(ctx, &livekit.RoomParticipantIdentity{
+	pi, err := s.lksvc.GetParticipant(ctx, &livekit.RoomParticipantIdentity{
 		Room:     req.Room,
 		Identity: req.Participant,
 	})
@@ -67,49 +93,53 @@ func (s *service) StartRecording(ctx context.Context, req StartRecordingRequest)
 		return err
 	}
 
-	// Filter out the participant tracks according to the requested OutputChannel
-	tracks := s.filterParticipantTracks(rp.Tracks, req.Channel)
-
-	// Push track request and SID based on the filtered tracks
+	// For all recordable tracks of that participant,
+	// construct track requests and sids
 	var trackSids []string
-	for _, track := range tracks {
-		b.pushTrackRequest(TrackRequest{
-			SID:    track.Sid,
-			Output: req.File,
-		})
+	var trackReqs []TrackRequest
+	for _, track := range s.getRecordableTracks(pi) {
 		trackSids = append(trackSids, track.Sid)
+		trackReqs = append(trackReqs, TrackRequest{
+			SID:    track.Sid,
+			Output: req.Output,
+		})
 	}
+
+	// Push the track requests
+	b.pushTrackRequests(trackReqs)
 
 	// Update subscription so the bot can subscribe
 	return s.updateTrackSubscriptions(ctx, req.Room, trackSids, true)
 }
 
-func (s *service) filterParticipantTracks(tracks []*livekit.TrackInfo, channel OutputChannel) []*livekit.TrackInfo {
-	// Build a map to categorise the track by their type for easier access later on
-	tracksByType := make(map[livekit.TrackType]*livekit.TrackInfo)
-	for _, track := range tracks {
-		tracksByType[track.Type] = track
+func (s *service) StopRecording(ctx context.Context, req StopRecordingRequest) error {
+	// Get participant info
+	pi, err := s.lksvc.GetParticipant(ctx, &livekit.RoomParticipantIdentity{
+		Room:     req.Room,
+		Identity: req.Participant,
+	})
+	if err != nil {
+		return err
 	}
 
-	// Select which tracks to output based on requested channel
-	switch channel {
-	case OutputChannelAV:
-		return []*livekit.TrackInfo{
-			tracksByType[livekit.TrackType_VIDEO],
-			tracksByType[livekit.TrackType_AUDIO],
-		}
-	case OutputChannelAudio:
-		return []*livekit.TrackInfo{
-			tracksByType[livekit.TrackType_AUDIO],
-		}
-	case OutputChannelVideo:
-		return []*livekit.TrackInfo{
-			tracksByType[livekit.TrackType_VIDEO],
-		}
+	// Get all recordable tracks
+	var trackSids []string
+	for _, track := range s.getRecordableTracks(pi) {
+		trackSids = append(trackSids, track.Sid)
 	}
 
-	// Return empty list by default
-	return []*livekit.TrackInfo{}
+	// Just need to remove the subscription
+	return s.updateTrackSubscriptions(ctx, req.Room, trackSids, false)
+}
+
+func (s *service) getRecordableTracks(pi *livekit.ParticipantInfo) []*livekit.TrackInfo {
+	var tracks []*livekit.TrackInfo = []*livekit.TrackInfo{}
+	for _, track := range pi.Tracks {
+		if track.Type == livekit.TrackType_AUDIO || track.Type == livekit.TrackType_VIDEO {
+			tracks = append(tracks, track)
+		}
+	}
+	return tracks
 }
 
 func (s *service) updateTrackSubscriptions(ctx context.Context, room string, sids []string, sub bool) error {
@@ -120,24 +150,4 @@ func (s *service) updateTrackSubscriptions(ctx context.Context, room string, sid
 		Subscribe: sub,
 	})
 	return err
-}
-
-func (s *service) StopRecording(ctx context.Context, req StopRecordingRequest) error {
-	// Get participant info
-	rp, err := s.lksvc.GetParticipant(ctx, &livekit.RoomParticipantIdentity{
-		Room:     req.Room,
-		Identity: req.Participant,
-	})
-	if err != nil {
-		return err
-	}
-
-	// Get all tracks of participant without filtering of requested OutputChannel
-	var trackSids []string
-	for _, track := range rp.Tracks {
-		trackSids = append(trackSids, track.Sid)
-	}
-
-	// Just need to update subscription
-	return s.updateTrackSubscriptions(ctx, req.Room, trackSids, false)
 }
