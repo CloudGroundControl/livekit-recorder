@@ -1,6 +1,10 @@
 package recorder
 
 import (
+	"os"
+	"strings"
+	"time"
+
 	"github.com/cloudgroundcontrol/livekit-egress/pkg/samplebuilder"
 	"github.com/livekit/protocol/logger"
 	"github.com/pion/rtp"
@@ -107,4 +111,23 @@ func (r *recorder) stopRecording() {
 	// Wait for signal from startRecording() after clean-up is done.
 	// This function must be called in a goroutine or it'll block main thread
 	<-r.closed
+
+	// Introduce a small delay otherwise the end frame of a video track will look chopped on the sides
+	time.Sleep(time.Millisecond * 10)
+
+	// Containerise the file (support video only for now)
+	var err error
+	sink := r.sink
+	if strings.Contains(sink.Name(), string(mediaIVF)) {
+		err = putVideoInContainer(sink.Name(), strings.ReplaceAll(sink.Name(), "ivf", "webm"))
+	} else if strings.Contains(sink.Name(), string(mediaH264)) {
+		err = putVideoInContainer(sink.Name(), strings.ReplaceAll(sink.Name(), "h264", "mp4"))
+	}
+
+	// Remove file if there are no errors
+	if err == nil {
+		os.Remove(sink.Name())
+	} else {
+		logger.Warnw("error while containerising the file", err, "filename", sink.Name())
+	}
 }

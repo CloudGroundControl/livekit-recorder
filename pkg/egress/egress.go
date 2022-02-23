@@ -113,6 +113,9 @@ func (s *service) StartRecording(ctx context.Context, req StartRecordingRequest)
 }
 
 func (s *service) StopRecording(ctx context.Context, req StopRecordingRequest) error {
+	s.lock.Lock()
+	defer s.lock.Unlock()
+
 	// Get participant info
 	pi, err := s.lksvc.GetParticipant(ctx, &livekit.RoomParticipantIdentity{
 		Room:     req.Room,
@@ -128,7 +131,15 @@ func (s *service) StopRecording(ctx context.Context, req StopRecordingRequest) e
 		trackSids = append(trackSids, track.Sid)
 	}
 
-	// Just need to remove the subscription
+	// Stop all the recorders for the participant tracks
+	b := s.bots[req.Room]
+	for _, trackSid := range trackSids {
+		if r, found := b.recorders[trackSid]; found {
+			r.Stop()
+		}
+	}
+
+	// Remove the subscription
 	return s.updateTrackSubscriptions(ctx, req.Room, trackSids, false)
 }
 
