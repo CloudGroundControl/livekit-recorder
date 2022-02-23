@@ -4,6 +4,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"os/exec"
 
 	"github.com/cloudgroundcontrol/livekit-egress/pkg/egress"
 	"github.com/cloudgroundcontrol/livekit-egress/pkg/http/rest"
@@ -25,6 +26,13 @@ func main() {
 	lkURL := getEnvOrFail("LIVEKIT_URL")
 	lkAPIKey := getEnvOrFail("LIVEKIT_API_KEY")
 	lkAPISecret := getEnvOrFail("LIVEKIT_API_SECRET")
+	debugMode := os.Getenv("APP_DEBUG")
+
+	// Check that ffmpeg is installed
+	_, err := exec.LookPath("ffmpeg")
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	// Initialise egress service and controller
 	service, err := egress.NewService(lkURL, lkAPIKey, lkAPISecret)
@@ -37,7 +45,9 @@ func main() {
 	e := echo.New()
 
 	// Attach middlewares
-	e.Use(middleware.Logger())
+	if debugMode == "true" {
+		e.Use(middleware.Logger())
+	}
 
 	// Attach handlers
 	e.GET("/", func(c echo.Context) error {
