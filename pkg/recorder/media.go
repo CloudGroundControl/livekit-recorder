@@ -2,7 +2,6 @@ package recorder
 
 import (
 	"errors"
-	"fmt"
 	"io"
 	"strings"
 
@@ -24,7 +23,7 @@ const (
 	mediaH264 mediaExtension = "h264"
 )
 
-func getMediaExtension(mimeType string) mediaExtension {
+func GetMediaExtension(mimeType string) mediaExtension {
 	if strings.EqualFold(mimeType, webrtc.MimeTypeVP8) ||
 		strings.EqualFold(mimeType, webrtc.MimeTypeVP9) {
 		return mediaIVF
@@ -41,29 +40,10 @@ func getMediaExtension(mimeType string) mediaExtension {
 	return ""
 }
 
-var (
-	ErrEmptyFileID       = errors.New("empty file ID")
-	ErrExtensionInFileID = errors.New("extension in file ID")
-	ErrMediaNotSupported = errors.New("media not supported")
-)
-
-func GetMediaFilename(fileID string, mimeType string) (string, error) {
-	if fileID == "" {
-		return "", ErrEmptyFileID
-	} else if strings.Contains(fileID, ".") {
-		return "", ErrExtensionInFileID
-	}
-
-	ext := getMediaExtension(mimeType)
-	if ext == "" {
-		return "", ErrMediaNotSupported
-	}
-
-	return fmt.Sprintf("%s.%s", fileID, ext), nil
-}
+var ErrMediaNotSupported = errors.New("media not supported")
 
 func createMediaWriter(out io.Writer, codec webrtc.RTPCodecParameters) (media.Writer, error) {
-	switch getMediaExtension(codec.MimeType) {
+	switch GetMediaExtension(codec.MimeType) {
 	case mediaIVF:
 		return ivfwriter.NewWith(out)
 	case mediaH264:

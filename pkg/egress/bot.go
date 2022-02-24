@@ -80,7 +80,7 @@ func (b *bot) OnTrackSubscribed(track *webrtc.TrackRemote, publication *lksdk.Re
 	}
 
 	// Guess file extension from codec and generate file name
-	filename, err := recorder.GetMediaFilename(req.Output, track.Codec().MimeType)
+	filename, err := getMediaFilename(req.Output, track.Codec().MimeType)
 	if err != nil {
 		logger.Warnw("cannot generate file name", err, "SID", publication.SID(), "Output", req.Output, "Codec", track.Codec().MimeType)
 		return
