@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cloudgroundcontrol/livekit-egress/pkg/recorder/internal/static"
+	"github.com/cloudgroundcontrol/livekit-recorder/pkg/recorder/internal/static"
 	"github.com/livekit/protocol/auth"
 	lksdk "github.com/livekit/server-sdk-go"
 	"github.com/pion/rtp"

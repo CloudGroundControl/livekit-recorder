@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cloudgroundcontrol/livekit-egress/pkg/samplebuilder"
+	"github.com/cloudgroundcontrol/livekit-recorder/pkg/samplebuilder"
 	"github.com/livekit/protocol/logger"
 	"github.com/pion/rtp"
 	"github.com/pion/webrtc/v3"

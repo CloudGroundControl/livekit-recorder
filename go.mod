@@ -1,4 +1,4 @@
-module github.com/cloudgroundcontrol/livekit-egress
+module github.com/cloudgroundcontrol/livekit-recorder
 
 go 1.17
 

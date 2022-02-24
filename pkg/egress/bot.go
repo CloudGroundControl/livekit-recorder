@@ -3,7 +3,7 @@ package egress
 import (
 	"sync"
 
-	"github.com/cloudgroundcontrol/livekit-egress/pkg/recorder"
+	"github.com/cloudgroundcontrol/livekit-recorder/pkg/recorder"
 	"github.com/livekit/protocol/logger"
 	lksdk "github.com/livekit/server-sdk-go"
 	"github.com/pion/webrtc/v3"

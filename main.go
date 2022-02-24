@@ -6,8 +6,8 @@ import (
 	"os"
 	"os/exec"
 
-	"github.com/cloudgroundcontrol/livekit-egress/pkg/egress"
-	"github.com/cloudgroundcontrol/livekit-egress/pkg/http/rest"
+	"github.com/cloudgroundcontrol/livekit-recorder/pkg/egress"
+	"github.com/cloudgroundcontrol/livekit-recorder/pkg/http/rest"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 )

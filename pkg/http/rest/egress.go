@@ -4,7 +4,7 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/cloudgroundcontrol/livekit-egress/pkg/egress"
+	"github.com/cloudgroundcontrol/livekit-recorder/pkg/egress"
 	"github.com/labstack/echo/v4"
 )
 
