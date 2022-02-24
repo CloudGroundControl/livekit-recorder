@@ -4,7 +4,7 @@ Service to record each participant in LiveKit room without transcoding. Prioriti
 
 ## TODO
 
-- [ ] Add Dockerfile
+- [x] Add Dockerfile
 - [ ] Upload to S3
 - [ ] Mux video + audio tracks
 - [ ] Debugging
