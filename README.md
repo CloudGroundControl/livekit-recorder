@@ -15,7 +15,7 @@ The original https://github.com/livekit/livekit-recorder was intended mainly for
 
 ## How it works
 
-The project has an `egress.Service` interface, which is responsible for managing bots (<strong>recordbots</strong>). The bots do not subscribe to all the participants; instead, we need to send a POST request specifying which room and participant to record, and the output name. This means we can have multiple bots in the room without duplicated recording, making it scalable through a Load Balancer. To stop the recording, either send a POST request to stop, or disconnect the participant from the room. We then use `ffmpeg` to containerise the output files
+The project has a service which is responsible for managing <strong>recordbots</strong>. The bots do not subscribe to all the participants; instead, we need to send a POST request specifying which room and participant to record, and the output name. This means we can have multiple bots in the room without duplicated recording, making it scalable through a Load Balancer. To stop the recording, either send a POST request to stop, or disconnect the participant from the room. We then use `ffmpeg` to containerise the output files.
 
 ## Prerequisite
 
@@ -23,7 +23,7 @@ Make sure you have `ffmpeg` installed (https://ffmpeg.org/download.html)
 
 ## Quickstart
 
-First, start the server (url can be `wss` if it's a remote room)
+First, start the server
 
 ```
 LIVEKIT_URL=ws://... \
