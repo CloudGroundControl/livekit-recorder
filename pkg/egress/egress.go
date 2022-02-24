@@ -136,6 +136,7 @@ func (s *service) StopRecording(ctx context.Context, req StopRecordingRequest) e
 	for _, trackSid := range trackSids {
 		if r, found := b.recorders[trackSid]; found {
 			r.Stop()
+			delete(b.recorders, trackSid)
 		}
 	}
 
