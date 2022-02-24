@@ -1,6 +1,7 @@
 package egress
 
 import (
+	"errors"
 	"sync"
 
 	"github.com/cloudgroundcontrol/livekit-recorder/pkg/recorder"
@@ -20,6 +21,8 @@ type TrackRequest struct {
 	SID    string
 	Output string
 }
+
+var ErrRecorderNotFound = errors.New("recorder not found")
 
 func createBot(url string, token string) (*bot, error) {
 	b := &bot{
@@ -47,6 +50,23 @@ func (b *bot) pushTrackRequests(reqs []TrackRequest) {
 	for _, req := range reqs {
 		b.pending[req.SID] = req
 	}
+}
+
+func (b *bot) stopRecording(trackSid string) error {
+	b.lock.Lock()
+	defer b.lock.Unlock()
+
+	// Check that recorder exists
+	_, found := b.recorders[trackSid]
+	if !found {
+		return ErrRecorderNotFound
+	}
+
+	// Stop recorder and remove from list
+	r := b.recorders[trackSid]
+	r.Stop()
+	delete(b.recorders, trackSid)
+	return nil
 }
 
 func (b *bot) OnTrackSubscribed(track *webrtc.TrackRemote, publication *lksdk.RemoteTrackPublication, rp *lksdk.RemoteParticipant) {
@@ -86,17 +106,9 @@ func (b *bot) OnTrackSubscribed(track *webrtc.TrackRemote, publication *lksdk.Re
 }
 
 func (b *bot) OnTrackUnsubscribed(track *webrtc.TrackRemote, publication *lksdk.RemoteTrackPublication, rp *lksdk.RemoteParticipant) {
-	b.lock.Lock()
-	defer b.lock.Unlock()
-
-	// Find recorder to stop, if not found, return
-	r, found := b.recorders[publication.SID()]
-	if !found {
-		logger.Infow("recorder not found", "SID", publication.SID())
-		return
+	// Stop recording
+	err := b.stopRecording(publication.SID())
+	if err != nil {
+		logger.Warnw("cannot stop recorder", err, "track SID", publication.SID())
 	}
-
-	// Stop recording and remove recorder from list
-	r.Stop()
-	delete(b.recorders, publication.SID())
 }

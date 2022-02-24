@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	"github.com/livekit/protocol/livekit"
+	"github.com/livekit/protocol/logger"
 	"github.com/livekit/protocol/utils"
 	lksdk "github.com/livekit/server-sdk-go"
 )
@@ -134,9 +135,9 @@ func (s *service) StopRecording(ctx context.Context, req StopRecordingRequest) e
 	// Stop all the recorders for the participant tracks
 	b := s.bots[req.Room]
 	for _, trackSid := range trackSids {
-		if r, found := b.recorders[trackSid]; found {
-			r.Stop()
-			delete(b.recorders, trackSid)
+		err = b.stopRecording(trackSid)
+		if err != nil {
+			logger.Warnw("cannot stop recorder", err, "track SID", trackSid)
 		}
 	}
 
