@@ -10,47 +10,47 @@ import (
 
 func TestExtensionG722(t *testing.T) {
 	ext := GetMediaExtension(webrtc.MimeTypeG722)
-	require.Equal(t, mediaOGG, ext)
+	require.Equal(t, MediaOGG, ext)
 }
 
 func TestExtensionOpus(t *testing.T) {
 	ext := GetMediaExtension(webrtc.MimeTypeOpus)
-	require.Equal(t, mediaOGG, ext)
+	require.Equal(t, MediaOGG, ext)
 }
 
 func TestExtensionPCMU(t *testing.T) {
 	ext := GetMediaExtension(webrtc.MimeTypePCMU)
-	require.EqualValues(t, mediaOGG, ext)
+	require.EqualValues(t, MediaOGG, ext)
 }
 
 func TestExtensionPCMA(t *testing.T) {
 	ext := GetMediaExtension(webrtc.MimeTypePCMA)
-	require.Equal(t, mediaOGG, ext)
+	require.Equal(t, MediaOGG, ext)
 }
 
 func TestExtensionVP8(t *testing.T) {
 	ext := GetMediaExtension(webrtc.MimeTypeVP8)
-	require.Equal(t, mediaIVF, ext)
+	require.Equal(t, MediaIVF, ext)
 }
 
 func TestExtensionVP9(t *testing.T) {
 	ext := GetMediaExtension(webrtc.MimeTypeVP9)
-	require.Equal(t, mediaIVF, ext)
+	require.Equal(t, MediaIVF, ext)
 }
 
 func TestExtensionH264(t *testing.T) {
 	ext := GetMediaExtension(webrtc.MimeTypeH264)
-	require.Equal(t, mediaH264, ext)
+	require.Equal(t, MediaH264, ext)
 }
 
 func TestExtensionH265GetEmptyString(t *testing.T) {
 	ext := GetMediaExtension(webrtc.MimeTypeH265)
-	require.Equal(t, mediaExtension(""), ext)
+	require.Equal(t, MediaExtension(""), ext)
 }
 
 func TestExtensionAV1GetEmptyString(t *testing.T) {
 	ext := GetMediaExtension(webrtc.MimeTypeAV1)
-	require.Equal(t, mediaExtension(""), ext)
+	require.Equal(t, MediaExtension(""), ext)
 }
 
 func TestGetH264Writer(t *testing.T) {

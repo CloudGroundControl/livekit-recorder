@@ -2,9 +2,11 @@ package egress
 
 import (
 	"errors"
+	"os"
 	"sync"
 
 	"github.com/cloudgroundcontrol/livekit-recorder/pkg/recorder"
+	"github.com/cloudgroundcontrol/livekit-recorder/pkg/upload"
 	"github.com/livekit/protocol/logger"
 	lksdk "github.com/livekit/server-sdk-go"
 	"github.com/pion/webrtc/v3"
@@ -13,23 +15,31 @@ import (
 type bot struct {
 	lock      sync.Mutex
 	room      *lksdk.Room
-	pending   map[string]TrackRequest
-	recorders map[string]recorder.Recorder
+	pending   map[string]trackRequest
+	recorders map[string]*recorderInstance
+	uploader  upload.Uploader
 }
 
-type TrackRequest struct {
-	SID    string
-	Output string
+type trackRequest struct {
+	sid    string
+	output OutputDescription
+}
+
+type recorderInstance struct {
+	output   OutputDescription
+	codec    webrtc.RTPCodecParameters
+	instance recorder.Recorder
 }
 
 var ErrRecorderNotFound = errors.New("recorder not found")
 
-func createBot(url string, token string) (*bot, error) {
+func createBot(url string, token string, uploader upload.Uploader) (*bot, error) {
 	b := &bot{
 		lock:      sync.Mutex{},
 		room:      nil,
-		pending:   make(map[string]TrackRequest),
-		recorders: make(map[string]recorder.Recorder),
+		pending:   make(map[string]trackRequest),
+		recorders: make(map[string]*recorderInstance),
+		uploader:  uploader,
 	}
 
 	room, err := lksdk.ConnectToRoomWithToken(url, token)
@@ -43,12 +53,12 @@ func createBot(url string, token string) (*bot, error) {
 	return b, nil
 }
 
-func (b *bot) pushTrackRequests(reqs []TrackRequest) {
+func (b *bot) pushTrackRequests(reqs []trackRequest) {
 	b.lock.Lock()
 	defer b.lock.Unlock()
 
 	for _, req := range reqs {
-		b.pending[req.SID] = req
+		b.pending[req.sid] = req
 	}
 }
 
@@ -62,11 +72,25 @@ func (b *bot) stopRecording(trackSid string) error {
 		return ErrRecorderNotFound
 	}
 
-	// Stop recorder and remove from list
+	// If recorder exists, remember to remove it at the end
+	defer delete(b.recorders, trackSid)
+
+	// Stop the recorder
 	r := b.recorders[trackSid]
-	r.Stop()
-	delete(b.recorders, trackSid)
-	return nil
+	r.instance.Stop()
+
+	// Check if we should containerise the file (support video only for now)
+	var err error
+	if isContainerisable(r.codec) {
+		err = containeriseFile(r.instance.Sink().Name())
+		if err != nil {
+			return err
+		}
+
+		// If there are no errors, remove the raw file
+		err = os.Remove(r.instance.Sink().Name())
+	}
+	return err
 }
 
 func (b *bot) OnTrackSubscribed(track *webrtc.TrackRemote, publication *lksdk.RemoteTrackPublication, rp *lksdk.RemoteParticipant) {
@@ -80,9 +104,9 @@ func (b *bot) OnTrackSubscribed(track *webrtc.TrackRemote, publication *lksdk.Re
 	}
 
 	// Guess file extension from codec and generate file name
-	filename, err := getMediaFilename(req.Output, track.Codec().MimeType)
+	filename, err := getTrackFilename(req.output.LocalID, track.Codec().MimeType)
 	if err != nil {
-		logger.Warnw("cannot generate file name", err, "SID", publication.SID(), "Output", req.Output, "Codec", track.Codec().MimeType)
+		logger.Warnw("cannot get file name", err, "SID", publication.SID(), "Output", req.output, "Codec", track.Codec().MimeType)
 		return
 	}
 
@@ -96,12 +120,16 @@ func (b *bot) OnTrackSubscribed(track *webrtc.TrackRemote, publication *lksdk.Re
 	// Create recorder and start recording
 	rec, err := recorder.NewTrackRecorder(track.Codec(), sink)
 	if err != nil {
-		logger.Warnw("cannot create recorder", err, "SID", publication.SID(), "Output", req.Output, "Codec", track.Codec().MimeType)
+		logger.Warnw("cannot create recorder", err, "SID", publication.SID(), "Output", req.output, "Codec", track.Codec().MimeType)
 	}
 	rec.Start(track)
 
 	// Attach recorder and remove track request from pending list
-	b.recorders[publication.SID()] = rec
+	b.recorders[publication.SID()] = &recorderInstance{
+		output:   req.output,
+		codec:    track.Codec(),
+		instance: rec,
+	}
 	delete(b.pending, publication.SID())
 }
 
@@ -109,6 +137,6 @@ func (b *bot) OnTrackUnsubscribed(track *webrtc.TrackRemote, publication *lksdk.
 	// Stop recording
 	err := b.stopRecording(publication.SID())
 	if err != nil {
-		logger.Warnw("cannot stop recorder", err, "track SID", publication.SID())
+		logger.Warnw("cannot stop recorder", err, "SID", publication.SID())
 	}
 }

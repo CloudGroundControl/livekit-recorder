@@ -15,27 +15,27 @@ import (
 	"github.com/pion/webrtc/v3/pkg/media/oggwriter"
 )
 
-type mediaExtension string
+type MediaExtension string
 
 const (
-	mediaOGG  mediaExtension = "ogg"
-	mediaIVF  mediaExtension = "ivf"
-	mediaH264 mediaExtension = "h264"
+	MediaOGG  MediaExtension = "ogg"
+	MediaIVF  MediaExtension = "ivf"
+	MediaH264 MediaExtension = "h264"
 )
 
-func GetMediaExtension(mimeType string) mediaExtension {
+func GetMediaExtension(mimeType string) MediaExtension {
 	if strings.EqualFold(mimeType, webrtc.MimeTypeVP8) ||
 		strings.EqualFold(mimeType, webrtc.MimeTypeVP9) {
-		return mediaIVF
+		return MediaIVF
 	}
 	if strings.EqualFold(mimeType, webrtc.MimeTypeH264) {
-		return mediaH264
+		return MediaH264
 	}
 	if strings.EqualFold(mimeType, webrtc.MimeTypeG722) ||
 		strings.EqualFold(mimeType, webrtc.MimeTypeOpus) ||
 		strings.EqualFold(mimeType, webrtc.MimeTypePCMA) ||
 		strings.EqualFold(mimeType, webrtc.MimeTypePCMU) {
-		return mediaOGG
+		return MediaOGG
 	}
 	return ""
 }
@@ -44,11 +44,11 @@ var ErrMediaNotSupported = errors.New("media not supported")
 
 func createMediaWriter(out io.Writer, codec webrtc.RTPCodecParameters) (media.Writer, error) {
 	switch GetMediaExtension(codec.MimeType) {
-	case mediaIVF:
+	case MediaIVF:
 		return ivfwriter.NewWith(out)
-	case mediaH264:
+	case MediaH264:
 		return h264writer.NewWith(out), nil
-	case mediaOGG:
+	case MediaOGG:
 		return oggwriter.NewWith(out, 48000, codec.Channels)
 	default:
 		return nil, ErrMediaNotSupported

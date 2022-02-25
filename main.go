@@ -35,7 +35,7 @@ func main() {
 	}
 
 	// Initialise egress service and controller
-	service, err := egress.NewService(lkURL, lkAPIKey, lkAPISecret)
+	service, err := egress.NewService(lkURL, lkAPIKey, lkAPISecret, nil)
 	if err != nil {
 		log.Fatal(err)
 	}
