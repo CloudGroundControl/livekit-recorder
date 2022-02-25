@@ -8,6 +8,7 @@ import (
 
 	"github.com/cloudgroundcontrol/livekit-recorder/pkg/egress"
 	"github.com/cloudgroundcontrol/livekit-recorder/pkg/http/rest"
+	"github.com/cloudgroundcontrol/livekit-recorder/pkg/upload"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 )
@@ -34,8 +35,22 @@ func main() {
 		log.Fatal(err)
 	}
 
+	// Create S3 uploader only if the environment variables are not empty
+	s3Region := os.Getenv("S3_REGION")
+	s3Bucket := os.Getenv("S3_BUCKET")
+	var uploader upload.Uploader
+	if s3Region != "" && s3Bucket != "" {
+		uploader, err = upload.NewS3Uploader(upload.S3Config{
+			Region: s3Region,
+			Bucket: s3Bucket,
+		})
+		if err != nil {
+			log.Fatal(err)
+		}
+	}
+
 	// Initialise egress service and controller
-	service, err := egress.NewService(lkURL, lkAPIKey, lkAPISecret)
+	service, err := egress.NewService(lkURL, lkAPIKey, lkAPISecret, uploader)
 	if err != nil {
 		log.Fatal(err)
 	}

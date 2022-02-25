@@ -6,6 +6,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/cloudgroundcontrol/livekit-recorder/pkg/upload"
 	"github.com/livekit/protocol/livekit"
 	"github.com/livekit/protocol/logger"
 	"github.com/livekit/protocol/utils"
@@ -27,15 +28,16 @@ type service struct {
 	bots map[string]*bot
 
 	// Services
-	auth  *authProvider
-	lksvc *lksdk.RoomServiceClient
+	auth     *authProvider
+	lksvc    *lksdk.RoomServiceClient
+	uploader upload.Uploader
 }
 
 const recordbotPrefix = "RB_"
 
 var ErrUrlMustHaveWS = errors.New("url must contain either ws:// or wss://")
 
-func NewService(url string, apiKey string, apiSecret string) (Service, error) {
+func NewService(url string, apiKey string, apiSecret string, uploader upload.Uploader) (Service, error) {
 	// By convention, we're passing ws://... in `url` , but for
 	// lksdk.NewRoomServiceClient, it expects http:// . Need to check for wss too
 	var tcpUrl string
@@ -52,12 +54,13 @@ func NewService(url string, apiKey string, apiSecret string) (Service, error) {
 	lksvc := lksdk.NewRoomServiceClient(tcpUrl, apiKey, apiSecret)
 
 	return &service{
-		name:  utils.NewGuid(recordbotPrefix),
-		url:   url,
-		lock:  sync.Mutex{},
-		bots:  make(map[string]*bot),
-		auth:  auth,
-		lksvc: lksvc,
+		name:     utils.NewGuid(recordbotPrefix),
+		url:      url,
+		lock:     sync.Mutex{},
+		bots:     make(map[string]*bot),
+		auth:     auth,
+		lksvc:    lksvc,
+		uploader: uploader,
 	}, nil
 }
 
@@ -75,7 +78,7 @@ func (s *service) StartRecording(ctx context.Context, req StartRecordingRequest)
 		}
 
 		// Create bot
-		b, err := createBot(s.url, token)
+		b, err := createBot(s.url, token, s.uploader)
 		if err != nil {
 			return err
 		}
@@ -97,12 +100,12 @@ func (s *service) StartRecording(ctx context.Context, req StartRecordingRequest)
 	// For all recordable tracks of that participant,
 	// construct track requests and sids
 	var trackSids []string
-	var trackReqs []TrackRequest
+	var trackReqs []trackRequest
 	for _, track := range s.getRecordableTracks(pi) {
 		trackSids = append(trackSids, track.Sid)
-		trackReqs = append(trackReqs, TrackRequest{
-			SID:    track.Sid,
-			Output: req.Output,
+		trackReqs = append(trackReqs, trackRequest{
+			sid:    track.Sid,
+			output: getOutputDescription(req.Output),
 		})
 	}
 
@@ -137,11 +140,11 @@ func (s *service) StopRecording(ctx context.Context, req StopRecordingRequest) e
 	for _, trackSid := range trackSids {
 		err = b.stopRecording(trackSid)
 		if err != nil {
-			logger.Warnw("cannot stop recorder", err, "track SID", trackSid)
+			logger.Warnw("error stopping recorder", err, "SID", trackSid)
 		}
 	}
 
-	// Remove the subscription
+	// Want to remove subscriptions at the end of the function
 	return s.updateTrackSubscriptions(ctx, req.Room, trackSids, false)
 }
 

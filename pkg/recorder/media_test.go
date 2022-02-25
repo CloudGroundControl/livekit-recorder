@@ -9,78 +9,48 @@ import (
 )
 
 func TestExtensionG722(t *testing.T) {
-	ext := getMediaExtension(webrtc.MimeTypeG722)
-	require.Equal(t, mediaOGG, ext)
+	ext := GetMediaExtension(webrtc.MimeTypeG722)
+	require.Equal(t, MediaOGG, ext)
 }
 
 func TestExtensionOpus(t *testing.T) {
-	ext := getMediaExtension(webrtc.MimeTypeOpus)
-	require.Equal(t, mediaOGG, ext)
+	ext := GetMediaExtension(webrtc.MimeTypeOpus)
+	require.Equal(t, MediaOGG, ext)
 }
 
 func TestExtensionPCMU(t *testing.T) {
-	ext := getMediaExtension(webrtc.MimeTypePCMU)
-	require.EqualValues(t, mediaOGG, ext)
+	ext := GetMediaExtension(webrtc.MimeTypePCMU)
+	require.EqualValues(t, MediaOGG, ext)
 }
 
 func TestExtensionPCMA(t *testing.T) {
-	ext := getMediaExtension(webrtc.MimeTypePCMA)
-	require.Equal(t, mediaOGG, ext)
+	ext := GetMediaExtension(webrtc.MimeTypePCMA)
+	require.Equal(t, MediaOGG, ext)
 }
 
 func TestExtensionVP8(t *testing.T) {
-	ext := getMediaExtension(webrtc.MimeTypeVP8)
-	require.Equal(t, mediaIVF, ext)
+	ext := GetMediaExtension(webrtc.MimeTypeVP8)
+	require.Equal(t, MediaIVF, ext)
 }
 
 func TestExtensionVP9(t *testing.T) {
-	ext := getMediaExtension(webrtc.MimeTypeVP9)
-	require.Equal(t, mediaIVF, ext)
+	ext := GetMediaExtension(webrtc.MimeTypeVP9)
+	require.Equal(t, MediaIVF, ext)
 }
 
 func TestExtensionH264(t *testing.T) {
-	ext := getMediaExtension(webrtc.MimeTypeH264)
-	require.Equal(t, mediaH264, ext)
+	ext := GetMediaExtension(webrtc.MimeTypeH264)
+	require.Equal(t, MediaH264, ext)
 }
 
 func TestExtensionH265GetEmptyString(t *testing.T) {
-	ext := getMediaExtension(webrtc.MimeTypeH265)
-	require.Equal(t, mediaExtension(""), ext)
+	ext := GetMediaExtension(webrtc.MimeTypeH265)
+	require.Equal(t, MediaExtension(""), ext)
 }
 
 func TestExtensionAV1GetEmptyString(t *testing.T) {
-	ext := getMediaExtension(webrtc.MimeTypeAV1)
-	require.Equal(t, mediaExtension(""), ext)
-}
-
-func TestGetFilenameSuccess(t *testing.T) {
-	mimeType := webrtc.MimeTypeVP8
-	fileID := "test"
-	expected := "test.ivf"
-	actual, err := GetMediaFilename(fileID, mimeType)
-	require.NoError(t, err)
-	require.Equal(t, expected, actual)
-}
-
-func TestGetFilenameFailEmptyFileID(t *testing.T) {
-	mimeType := webrtc.MimeTypeH264
-	fileID := ""
-	_, err := GetMediaFilename(fileID, mimeType)
-	require.ErrorIs(t, err, ErrEmptyFileID)
-}
-
-func TestGetFilenameFailFileIDContainsExtension(t *testing.T) {
-	mimeType := webrtc.MimeTypeAV1
-	fileID := "test.ivf"
-	_, err := GetMediaFilename(fileID, mimeType)
-	require.ErrorIs(t, err, ErrExtensionInFileID)
-}
-
-func TestGetFilenameFailUnsupportedMedia(t *testing.T) {
-	mimeType := webrtc.MimeTypeAV1
-	fileID := "test"
-	_, err := GetMediaFilename(fileID, mimeType)
-	require.ErrorIs(t, err, ErrMediaNotSupported)
+	ext := GetMediaExtension(webrtc.MimeTypeAV1)
+	require.Equal(t, MediaExtension(""), ext)
 }
 
 func TestGetH264Writer(t *testing.T) {
