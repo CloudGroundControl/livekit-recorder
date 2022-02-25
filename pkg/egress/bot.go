@@ -81,7 +81,13 @@ func (b *bot) stopRecording(trackSid string) error {
 
 	// Check if we should containerise the file (support video only for now)
 	var err error
+	var uploadFilename = r.instance.Sink().Name()
 	if isContainerisable(r.codec) {
+		uploadFilename, err = getContainerFilename(r.instance.Sink().Name())
+		if err != nil {
+			return err
+		}
+
 		err = containeriseFile(r.instance.Sink().Name())
 		if err != nil {
 			return err
@@ -90,6 +96,21 @@ func (b *bot) stopRecording(trackSid string) error {
 		// If there are no errors, remove the raw file
 		err = os.Remove(r.instance.Sink().Name())
 	}
+
+	// Check if we want to upload
+	if b.uploader != nil {
+		go func(filename string) {
+			file, err := os.Open(filename)
+			if err != nil {
+				return
+			}
+			err = b.uploader.Upload(r.output.RemoteID, file)
+			if err == nil {
+				os.Remove(filename)
+			}
+		}(uploadFilename)
+	}
+
 	return err
 }
 
