@@ -25,7 +25,6 @@ func (p *authProvider) buildEmptyToken(room string, identity string) (string, er
 		CanPublishData: &f,
 		CanSubscribe:   &f,
 		Hidden:         true,
-		Recorder:       true,
 	}
 	return at.
 		AddGrant(grant).
