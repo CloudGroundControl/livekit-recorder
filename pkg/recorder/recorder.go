@@ -1,10 +1,8 @@
 package recorder
 
 import (
-	"time"
-
-	"github.com/cloudgroundcontrol/livekit-recorder/pkg/samplebuilder"
 	"github.com/livekit/protocol/logger"
+	"github.com/livekit/server-sdk-go/pkg/samplebuilder"
 	"github.com/pion/rtp"
 	"github.com/pion/webrtc/v3"
 	"github.com/pion/webrtc/v3/pkg/media"
@@ -40,7 +38,11 @@ func (r *recorder) Start(track *webrtc.TrackRemote) {
 }
 
 func (r *recorder) Stop() {
-	go r.stopRecording()
+	// Signal to startRecording() goroutine to end
+	close(r.done)
+
+	// Wait for signal from startRecording() after clean-up is done.
+	<-r.closed
 }
 
 func (r *recorder) Sink() RecorderSink {
@@ -105,16 +107,4 @@ func (r *recorder) writeToSink(p *rtp.Packet) (err error) {
 		}
 	}
 	return nil
-}
-
-func (r *recorder) stopRecording() {
-	// Signal to startRecording() goroutine to end
-	close(r.done)
-
-	// Wait for signal from startRecording() after clean-up is done.
-	// This function must be called in a goroutine or it'll block main thread
-	<-r.closed
-
-	// Introduce a small delay otherwise the end frame of a video track will look chopped on the sides
-	time.Sleep(time.Millisecond * 10)
 }

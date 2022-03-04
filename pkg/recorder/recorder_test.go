@@ -7,7 +7,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cloudgroundcontrol/livekit-recorder/pkg/recorder/internal/static"
 	"github.com/livekit/protocol/auth"
 	lksdk "github.com/livekit/server-sdk-go"
 	"github.com/pion/rtp"
@@ -149,6 +148,19 @@ func TestStopRecordingWithoutStart(t *testing.T) {
 	}()
 }
 
+func TestSinkEquality(t *testing.T) {
+	codec := webrtc.RTPCodecParameters{
+		RTPCodecCapability: webrtc.RTPCodecCapability{
+			MimeType: webrtc.MimeTypeVP8,
+		},
+	}
+	sink := NewBufferSink("test")
+	tr, _ := NewTrackRecorder(codec, sink)
+
+	// Expect stored sink is the same as passed sink
+	require.Equal(t, sink, tr.Sink())
+}
+
 func getEnvOrFail(key string) string {
 	val := os.Getenv(key)
 	if val == "" {
@@ -221,19 +233,23 @@ func TestRecorderUsageScenario(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	pRoom.LocalParticipant.PublishTrack(sampleTrack, participantID+"-video")
+	publication, err := pRoom.LocalParticipant.PublishTrack(sampleTrack, &lksdk.TrackPublicationOptions{
+		Name: participantID + "-video",
+	})
+	require.NoError(t, err)
 
 	// -----
 	// Publish static media packets until we receive stop signal
 	// -----
 
-	sampleProvider := static.NewProvider()
+	sampleProvider := lksdk.NewNullSampleProvider(90000)
 	sampleDone := make(chan struct{}, 1)
 	go func() {
 		var sample media.Sample
 		for {
 			select {
 			case <-sampleDone:
+				pRoom.LocalParticipant.UnpublishTrack(publication.SID())
 				return
 			default:
 				sample, err = sampleProvider.NextSample()
@@ -247,7 +263,9 @@ func TestRecorderUsageScenario(t *testing.T) {
 	// Create recorder since we know the codec we'll be publishing
 	// -----
 
-	sink := NewBufferSink(participantID + "-video")
+	sink, err := NewFileSink(participantID + "-video.ivf")
+	require.NoError(t, err)
+
 	rec, err := NewTrackRecorder(webrtc.RTPCodecParameters{
 		RTPCodecCapability: webrtc.RTPCodecCapability{
 			MimeType: webrtc.MimeTypeVP8,
@@ -266,4 +284,7 @@ func TestRecorderUsageScenario(t *testing.T) {
 	time.Sleep(time.Second * 2)
 	sampleDone <- struct{}{}
 	rec.Stop()
+
+	// Remember to remove video file afterwards
+	os.Remove(participantID + "-video.ivf")
 }
