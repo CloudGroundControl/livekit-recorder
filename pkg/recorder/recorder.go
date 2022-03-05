@@ -11,18 +11,18 @@ import (
 type Recorder interface {
 	Start(track *webrtc.TrackRemote)
 	Stop()
-	Sink() RecorderSink
+	Sink() Sink
 }
 
 type recorder struct {
-	sink   RecorderSink
+	sink   Sink
 	done   chan struct{}
 	closed chan struct{}
 	sb     *samplebuilder.SampleBuilder
 	mw     media.Writer
 }
 
-func NewTrackRecorder(codec webrtc.RTPCodecParameters, sink RecorderSink) (Recorder, error) {
+func NewTrackRecorder(codec webrtc.RTPCodecParameters, sink Sink) (Recorder, error) {
 	done := make(chan struct{}, 1)
 	closed := make(chan struct{}, 1)
 	sb := createSampleBuilder(codec)
@@ -45,7 +45,7 @@ func (r *recorder) Stop() {
 	<-r.closed
 }
 
-func (r *recorder) Sink() RecorderSink {
+func (r *recorder) Sink() Sink {
 	return r.sink
 }
 

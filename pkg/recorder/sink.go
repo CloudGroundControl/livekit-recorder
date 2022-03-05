@@ -6,14 +6,14 @@ import (
 	"github.com/pion/transport/packetio"
 )
 
-type RecorderSink interface {
+type Sink interface {
 	Name() string
 	Read(p []byte) (n int, err error)
 	Write([]byte) (int, error)
 	Close() error
 }
 
-func NewFileSink(filename string) (RecorderSink, error) {
+func NewFileSink(filename string) (Sink, error) {
 	return os.Create(filename)
 }
 
@@ -22,7 +22,7 @@ type bufferSink struct {
 	buffer *packetio.Buffer
 }
 
-func NewBufferSink(id string) RecorderSink {
+func NewBufferSink(id string) Sink {
 	buffer := packetio.NewBuffer()
 	return &bufferSink{id, buffer}
 }
