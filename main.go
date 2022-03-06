@@ -6,8 +6,8 @@ import (
 	"os"
 	"os/exec"
 
-	"github.com/cloudgroundcontrol/livekit-recorder/pkg/egress"
 	"github.com/cloudgroundcontrol/livekit-recorder/pkg/http/rest"
+	"github.com/cloudgroundcontrol/livekit-recorder/pkg/recording"
 	"github.com/cloudgroundcontrol/livekit-recorder/pkg/upload"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
@@ -49,12 +49,13 @@ func main() {
 		}
 	}
 
-	// Initialise egress service and controller
-	service, err := egress.NewService(lkURL, lkAPIKey, lkAPISecret, uploader)
+	// Initialise recording service and controller
+	service, err := recording.NewService(lkURL, lkAPIKey, lkAPISecret)
 	if err != nil {
 		log.Fatal(err)
 	}
-	controller := rest.NewEgressController(service)
+	service.SetUploader(uploader)
+	controller := rest.NewRecordingController(service)
 
 	// Initialise server
 	e := echo.New()

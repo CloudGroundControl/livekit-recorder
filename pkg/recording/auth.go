@@ -1,4 +1,4 @@
-package egress
+package recording
 
 import (
 	"time"
@@ -11,7 +11,7 @@ type authProvider struct {
 	APISecret string
 }
 
-func NewAuthProvider(key string, secret string) *authProvider {
+func createAuthProvider(key string, secret string) *authProvider {
 	return &authProvider{key, secret}
 }
 

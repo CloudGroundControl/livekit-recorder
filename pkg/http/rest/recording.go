@@ -4,18 +4,18 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/cloudgroundcontrol/livekit-recorder/pkg/egress"
+	"github.com/cloudgroundcontrol/livekit-recorder/pkg/recording"
 	"github.com/labstack/echo/v4"
 )
 
-type egressController struct {
-	egress.Service
+type recordingController struct {
+	recording.Service
 }
 
 type StartRecordingRequest struct {
 	Room        string `json:"room"`
 	Participant string `json:"participant"`
-	Output      string `json:"output"`
+	Profile     string `json:"profile"`
 }
 
 type StopRecordingRequest struct {
@@ -23,13 +23,13 @@ type StopRecordingRequest struct {
 	Participant string `json:"participant"`
 }
 
-func NewEgressController(service egress.Service) egressController {
-	return egressController{service}
+func NewRecordingController(service recording.Service) recordingController {
+	return recordingController{service}
 }
 
 var ErrEmptyFields = errors.New("one or more fields is empty")
 
-func (ec *egressController) StartRecording(c echo.Context) error {
+func (rc *recordingController) StartRecording(c echo.Context) error {
 	// Bind request data
 	data := new(StartRecordingRequest)
 	if err := c.Bind(data); err != nil {
@@ -37,15 +37,21 @@ func (ec *egressController) StartRecording(c echo.Context) error {
 	}
 
 	// Sanitise request
-	if data.Room == "" || data.Participant == "" || data.Output == "" {
+	if data.Room == "" || data.Participant == "" || data.Profile == "" {
 		return echo.NewHTTPError(http.StatusBadRequest, ErrEmptyFields)
 	}
 
+	// Parse the media profile
+	profile, err := recording.ParseMediaProfile(data.Profile)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, err)
+	}
+
 	// Call service
-	err := ec.Service.StartRecording(c.Request().Context(), egress.StartRecordingRequest{
+	err = rc.Service.StartRecording(c.Request().Context(), recording.StartRecordingRequest{
 		Room:        data.Room,
 		Participant: data.Participant,
-		Output:      data.Output,
+		Profile:     profile,
 	})
 	if err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, err)
@@ -55,7 +61,7 @@ func (ec *egressController) StartRecording(c echo.Context) error {
 	return c.NoContent(http.StatusOK)
 }
 
-func (ec *egressController) StopRecording(c echo.Context) error {
+func (rc *recordingController) StopRecording(c echo.Context) error {
 	// Bind request data
 	data := new(StopRecordingRequest)
 	if err := c.Bind(data); err != nil {
@@ -68,7 +74,7 @@ func (ec *egressController) StopRecording(c echo.Context) error {
 	}
 
 	// Call service
-	err := ec.Service.StopRecording(c.Request().Context(), egress.StopRecordingRequest{
+	err := rc.Service.StopRecording(c.Request().Context(), recording.StopRecordingRequest{
 		Room:        data.Room,
 		Participant: data.Participant,
 	})
