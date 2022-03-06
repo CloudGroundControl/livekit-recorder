@@ -1,6 +1,9 @@
 package recorder
 
 import (
+	"context"
+	"io"
+
 	"github.com/livekit/protocol/logger"
 	"github.com/livekit/server-sdk-go/pkg/samplebuilder"
 	"github.com/pion/rtp"
@@ -10,39 +13,38 @@ import (
 
 type Recorder interface {
 	Start(track *webrtc.TrackRemote)
-	Stop()
+	Stop() error
 	Sink() Sink
 }
 
 type recorder struct {
+	ctx    context.Context
+	cancel context.CancelFunc
 	sink   Sink
-	done   chan struct{}
-	closed chan struct{}
 	sb     *samplebuilder.SampleBuilder
 	mw     media.Writer
 }
 
-func NewTrackRecorder(codec webrtc.RTPCodecParameters, sink Sink) (Recorder, error) {
-	done := make(chan struct{}, 1)
-	closed := make(chan struct{}, 1)
+func NewRecorder(codec webrtc.RTPCodecParameters, sink Sink) (Recorder, error) {
 	sb := createSampleBuilder(codec)
 	mw, err := createMediaWriter(sink, codec)
 	if err != nil {
 		return nil, err
 	}
-	return &recorder{sink, done, closed, sb, mw}, nil
+	ctx, cancel := context.WithCancel(context.TODO())
+	return &recorder{ctx, cancel, sink, sb, mw}, nil
 }
 
 func (r *recorder) Start(track *webrtc.TrackRemote) {
 	go r.startRecording(track)
 }
 
-func (r *recorder) Stop() {
-	// Signal to startRecording() goroutine to end
-	close(r.done)
+func (r *recorder) Stop() error {
+	// Signal goroutine to stop
+	r.cancel()
 
-	// Wait for signal from startRecording() after clean-up is done.
-	<-r.closed
+	// Close the file synchronously.
+	return r.sink.Close()
 }
 
 func (r *recorder) Sink() Sink {
@@ -50,29 +52,24 @@ func (r *recorder) Sink() Sink {
 }
 
 func (r *recorder) startRecording(track *webrtc.TrackRemote) {
-	// Clean-up process
 	var err error
 	defer func() {
-		// Log error during recording
-		if err != nil {
-			logger.Warnw("error while recording", err)
+		// Ignore EOF and sink closed errors
+		if err == io.EOF || err == ErrSinkClosed {
+			err = nil
 		}
 
-		// Close sink
-		err = r.sink.Close()
+		// Log any errors
 		if err != nil {
-			logger.Warnw("cannot close sink", err)
+			logger.Warnw("recorder error", err)
 		}
-
-		// Signal that sink has been closed
-		close(r.closed)
 	}()
 
 	// Process RTP packets forever until stopped
 	var packet *rtp.Packet
 	for {
 		select {
-		case <-r.done:
+		case <-r.ctx.Done():
 			return
 		default:
 			// Read RTP stream
@@ -100,11 +97,14 @@ func (r *recorder) writeToSink(p *rtp.Packet) (err error) {
 	r.sb.Push(p)
 
 	// And from the buffered packets, write to sink
-	for _, p := range r.sb.PopPackets() {
-		err = r.mw.WriteRTP(p)
-		if err != nil {
-			return err
+	if packets := r.sb.PopPackets(); packets != nil {
+		for _, p := range packets {
+			err = r.mw.WriteRTP(p)
+			if err != nil {
+				return err
+			}
 		}
 	}
+
 	return nil
 }

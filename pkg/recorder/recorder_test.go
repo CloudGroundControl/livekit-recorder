@@ -40,7 +40,7 @@ func TestCreateRecorderForVideo(t *testing.T) {
 	}
 	sink := NewBufferSink("test")
 
-	tr, err := NewTrackRecorder(codec, sink)
+	tr, err := NewRecorder(codec, sink)
 	require.NoError(t, err)
 	require.NotNil(t, tr)
 
@@ -58,7 +58,7 @@ func TestCreateRecorderForAudio(t *testing.T) {
 	}
 	sink := NewBufferSink("test")
 
-	tr, err := NewTrackRecorder(codec, sink)
+	tr, err := NewRecorder(codec, sink)
 	require.NoError(t, err)
 	require.NotNil(t, tr)
 
@@ -74,7 +74,7 @@ func TestFailCreateRecorderForUnsupportedCodec(t *testing.T) {
 		},
 	}
 	sink := NewBufferSink("test")
-	_, err := NewTrackRecorder(codec, sink)
+	_, err := NewRecorder(codec, sink)
 	require.ErrorIs(t, err, ErrMediaNotSupported)
 }
 
@@ -87,7 +87,7 @@ func TestWritePacketsWithSampleBuffer(t *testing.T) {
 		},
 	}
 	sink := NewBufferSink("test")
-	tr, _ := NewTrackRecorder(codec, sink)
+	tr, _ := NewRecorder(codec, sink)
 	rec := promoteRecorder(tr)
 	require.NotNil(t, rec.sb)
 
@@ -110,7 +110,7 @@ func TestWritePacketsWithoutSampleBuffer(t *testing.T) {
 		},
 	}
 	sink := NewBufferSink("test")
-	tr, _ := NewTrackRecorder(codec, sink)
+	tr, _ := NewRecorder(codec, sink)
 	rec := promoteRecorder(tr)
 	require.Nil(t, rec.sb)
 
@@ -123,31 +123,6 @@ func TestWritePacketsWithoutSampleBuffer(t *testing.T) {
 	}
 }
 
-func TestStopRecordingWithoutStart(t *testing.T) {
-	codec := webrtc.RTPCodecParameters{
-		RTPCodecCapability: webrtc.RTPCodecCapability{
-			MimeType: webrtc.MimeTypeVP8,
-		},
-	}
-	sink := NewBufferSink("test")
-	tr, _ := NewTrackRecorder(codec, sink)
-	rec := promoteRecorder(tr)
-
-	go func() {
-		// Trigger stop signal
-		rec.Stop()
-
-		// Expect `done` to be closed
-		_, ok := (<-rec.done)
-		require.False(t, ok)
-
-		// Expect `closed` to still be open since we're stopping recording
-		// without starting, so the goroutine to close `rec.closed` is not called
-		_, ok = (<-rec.closed)
-		require.True(t, ok)
-	}()
-}
-
 func TestSinkEquality(t *testing.T) {
 	codec := webrtc.RTPCodecParameters{
 		RTPCodecCapability: webrtc.RTPCodecCapability{
@@ -155,7 +130,7 @@ func TestSinkEquality(t *testing.T) {
 		},
 	}
 	sink := NewBufferSink("test")
-	tr, _ := NewTrackRecorder(codec, sink)
+	tr, _ := NewRecorder(codec, sink)
 
 	// Expect stored sink is the same as passed sink
 	require.Equal(t, sink, tr.Sink())
@@ -266,7 +241,7 @@ func TestRecorderUsageScenario(t *testing.T) {
 	sink, err := NewFileSink(participantID + "-video.ivf")
 	require.NoError(t, err)
 
-	rec, err := NewTrackRecorder(webrtc.RTPCodecParameters{
+	rec, err := NewRecorder(webrtc.RTPCodecParameters{
 		RTPCodecCapability: webrtc.RTPCodecCapability{
 			MimeType: webrtc.MimeTypeVP8,
 		},
