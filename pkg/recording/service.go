@@ -28,6 +28,7 @@ type Service interface {
 	StopRecording(ctx context.Context, req StopRecordingRequest) error
 	SuggestMediaProfile(ctx context.Context, room string, identity string) (MediaProfile, error)
 	SetUploader(uploader upload.Uploader)
+	LKRoomService() *lksdk.RoomServiceClient
 }
 
 type service struct {
@@ -73,6 +74,10 @@ func (s *service) SetUploader(uploader upload.Uploader) {
 	s.lock.Lock()
 	defer s.lock.Unlock()
 	s.uploader = uploader
+}
+
+func (s *service) LKRoomService() *lksdk.RoomServiceClient {
+	return s.lksvc
 }
 
 func (s *service) StartRecording(ctx context.Context, req StartRecordingRequest) error {

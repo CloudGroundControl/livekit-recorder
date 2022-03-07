@@ -1,13 +1,16 @@
 package rest
 
 import (
+	"context"
 	"errors"
 	"net/http"
+	"time"
 
 	"github.com/cloudgroundcontrol/livekit-recorder/pkg/recording"
 	"github.com/labstack/echo/v4"
 	"github.com/livekit/protocol/auth"
 	"github.com/livekit/protocol/livekit"
+	"github.com/livekit/protocol/logger"
 	"github.com/livekit/protocol/webhook"
 	"google.golang.org/protobuf/encoding/protojson"
 )
@@ -121,18 +124,66 @@ func (rc *recordingController) ReceiveWebhooks(c echo.Context) error {
 
 	// Handle events
 	if event.GetEvent() == "participant_joined" && event.Room != nil && event.Participant != nil {
-		profile, err := rc.Service.SuggestMediaProfile(c.Request().Context(), event.Room.Name, event.Participant.Identity)
-		if err != nil {
-			return echo.NewHTTPError(http.StatusBadRequest, err)
-		}
-		err = rc.Service.StartRecording(c.Request().Context(), recording.StartRecordingRequest{
-			Room:        event.Room.Name,
-			Participant: event.Participant.Identity,
-			Profile:     profile,
-		})
-		if err != nil {
-			return echo.NewHTTPError(http.StatusInternalServerError, err)
-		}
+		// Spawn a goroutine that will poll and check that the participant has at least 1 track
+		go func(room string, participant string) {
+			ctx := context.TODO()
+			deadline := time.After(time.Second * 10)
+			ticker := time.NewTicker(time.Second * 2)
+			done := make(chan struct{}, 1)
+
+			var err error
+			defer func() {
+				// Stop timer
+				ticker.Stop()
+
+				// Handle polling errors
+				if err != nil {
+					logger.Warnw("error checking participant tracks", err)
+					return
+				}
+
+				// Start recording
+				var profile, err = rc.Service.SuggestMediaProfile(ctx, event.Room.Name, event.Participant.Identity)
+				if err != nil {
+					logger.Warnw("cannot suggest profile", err)
+					return
+				}
+				err = rc.Service.StartRecording(ctx, recording.StartRecordingRequest{
+					Room:        event.Room.Name,
+					Participant: event.Participant.Identity,
+					Profile:     profile,
+				})
+				if err != nil {
+					logger.Warnw("cannot start recording", err)
+				}
+			}()
+
+			// Block forever until participant has at least 1 track or until it's past the deadline.
+			// In between ticks, it will make an API call to check for participants
+			for {
+				select {
+				case <-done:
+					return
+				case <-deadline:
+					err = errors.New("too long")
+					return
+				case <-ticker.C:
+					pi, err := rc.LKRoomService().GetParticipant(ctx, &livekit.RoomParticipantIdentity{
+						Room:     room,
+						Identity: participant,
+					})
+					if err != nil {
+						return
+					} else if len(pi.Tracks) < 1 {
+						err = errors.New("participant tracks are not available yet")
+						if err != nil {
+							return
+						}
+					}
+					close(done)
+				}
+			}
+		}(event.Room.Name, event.Participant.Identity)
 	}
 
 	if event.GetEvent() == "participant_left" && event.Room != nil && event.Participant != nil {
