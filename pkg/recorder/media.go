@@ -31,10 +31,7 @@ func GetMediaExtension(mimeType string) MediaExtension {
 	if strings.EqualFold(mimeType, webrtc.MimeTypeH264) {
 		return MediaH264
 	}
-	if strings.EqualFold(mimeType, webrtc.MimeTypeG722) ||
-		strings.EqualFold(mimeType, webrtc.MimeTypeOpus) ||
-		strings.EqualFold(mimeType, webrtc.MimeTypePCMA) ||
-		strings.EqualFold(mimeType, webrtc.MimeTypePCMU) {
+	if strings.EqualFold(mimeType, webrtc.MimeTypeOpus) {
 		return MediaOGG
 	}
 	return ""

@@ -103,16 +103,16 @@ func TestWritePacketsWithSampleBuffer(t *testing.T) {
 func TestWritePacketsWithoutSampleBuffer(t *testing.T) {
 	codec := webrtc.RTPCodecParameters{
 		RTPCodecCapability: webrtc.RTPCodecCapability{
-			// G722 does not have sample buffer depacketizer,
-			// so it won't spawn sample buffer
-			MimeType: webrtc.MimeTypeG722,
+			MimeType: webrtc.MimeTypeVP8,
 			Channels: 1,
 		},
 	}
 	sink := NewBufferSink("test")
 	tr, _ := NewRecorder(codec, sink)
 	rec := promoteRecorder(tr)
-	require.Nil(t, rec.sb)
+
+	// Set sample buffer to be nil
+	rec.sb = nil
 
 	// Write multiple packets
 	for i := 0; i < 10; i++ {
