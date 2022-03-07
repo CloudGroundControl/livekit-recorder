@@ -26,6 +26,7 @@ type StopRecordingRequest struct {
 type Service interface {
 	StartRecording(ctx context.Context, req StartRecordingRequest) error
 	StopRecording(ctx context.Context, req StopRecordingRequest) error
+	SuggestMediaProfile(ctx context.Context, room string, identity string) (MediaProfile, error)
 	SetUploader(uploader upload.Uploader)
 }
 

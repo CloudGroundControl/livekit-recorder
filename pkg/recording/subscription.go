@@ -61,3 +61,33 @@ func (s *service) RemoveBotSubscriptionCallback(bot string, room string, partici
 		Subcribe: false,
 	})
 }
+
+func (s *service) SuggestMediaProfile(ctx context.Context, room string, identity string) (MediaProfile, error) {
+	pi, err := s.lksvc.GetParticipant(ctx, &livekit.RoomParticipantIdentity{
+		Room:     room,
+		Identity: identity,
+	})
+	if err != nil {
+		return "", err
+	}
+
+	var videoEnabled, audioEnabled bool
+	for _, t := range pi.Tracks {
+		switch t.Type {
+		case livekit.TrackType_VIDEO:
+			videoEnabled = true
+		case livekit.TrackType_AUDIO:
+			audioEnabled = true
+		}
+	}
+
+	if videoEnabled && audioEnabled {
+		return MediaMuxedAV, nil
+	} else if videoEnabled && !audioEnabled {
+		return MediaVideoOnly, nil
+	} else if audioEnabled && !videoEnabled {
+		return MediaAudioOnly, nil
+	}
+
+	return "", ErrUnknownMediaProfile
+}

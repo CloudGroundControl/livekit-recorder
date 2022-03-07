@@ -49,13 +49,20 @@ func main() {
 		}
 	}
 
-	// Initialise recording service and controller
+	// Initialise recording service
 	service, err := recording.NewService(lkURL, lkAPIKey, lkAPISecret)
 	if err != nil {
 		log.Fatal(err)
 	}
 	service.SetUploader(uploader)
-	controller := rest.NewRecordingController(service)
+
+	// Initialise recording controller
+	creds := rest.LiveKitCredentials{
+		BaseURL:   lkURL,
+		APIKey:    lkAPIKey,
+		APISecret: lkAPISecret,
+	}
+	controller := rest.NewRecordingController(creds, service)
 
 	// Initialise server
 	e := echo.New()
@@ -76,6 +83,7 @@ func main() {
 	// Attach egress handlers
 	e.POST("/recordings/start", controller.StartRecording)
 	e.POST("/recordings/stop", controller.StopRecording)
+	e.POST("/recordings/webhooks", controller.ReceiveWebhooks)
 
 	// Start server
 	e.Logger.Fatal(e.Start(":" + port))

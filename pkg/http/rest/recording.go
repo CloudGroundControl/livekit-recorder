@@ -6,9 +6,20 @@ import (
 
 	"github.com/cloudgroundcontrol/livekit-recorder/pkg/recording"
 	"github.com/labstack/echo/v4"
+	"github.com/livekit/protocol/auth"
+	"github.com/livekit/protocol/livekit"
+	"github.com/livekit/protocol/webhook"
+	"google.golang.org/protobuf/encoding/protojson"
 )
 
+type LiveKitCredentials struct {
+	BaseURL   string
+	APIKey    string
+	APISecret string
+}
+
 type recordingController struct {
+	creds LiveKitCredentials
 	recording.Service
 }
 
@@ -23,8 +34,8 @@ type StopRecordingRequest struct {
 	Participant string `json:"participant"`
 }
 
-func NewRecordingController(service recording.Service) recordingController {
-	return recordingController{service}
+func NewRecordingController(creds LiveKitCredentials, service recording.Service) recordingController {
+	return recordingController{creds, service}
 }
 
 var ErrEmptyFields = errors.New("one or more fields is empty")
@@ -37,12 +48,19 @@ func (rc *recordingController) StartRecording(c echo.Context) error {
 	}
 
 	// Sanitise request
-	if data.Room == "" || data.Participant == "" || data.Profile == "" {
+	if data.Room == "" || data.Participant == "" {
 		return echo.NewHTTPError(http.StatusBadRequest, ErrEmptyFields)
 	}
 
-	// Parse the media profile
-	profile, err := recording.ParseMediaProfile(data.Profile)
+	// Get profile
+	var profile recording.MediaProfile
+	var err error
+	if data.Profile != "" {
+		profile, err = recording.ParseMediaProfile(data.Profile)
+
+	} else {
+		profile, err = rc.Service.SuggestMediaProfile(c.Request().Context(), data.Room, data.Participant)
+	}
 	if err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, err)
 	}
@@ -83,5 +101,49 @@ func (rc *recordingController) StopRecording(c echo.Context) error {
 	}
 
 	// Return success
+	return c.NoContent(http.StatusOK)
+}
+
+func (rc *recordingController) ReceiveWebhooks(c echo.Context) error {
+	authProvider := auth.NewFileBasedKeyProviderFromMap(map[string]string{
+		rc.creds.APIKey: rc.creds.APISecret,
+	})
+
+	data, err := webhook.Receive(c.Request(), authProvider)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, err)
+	}
+
+	event := livekit.WebhookEvent{}
+	if err = protojson.Unmarshal(data, &event); err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, err)
+	}
+
+	// Handle events
+	if event.GetEvent() == "participant_joined" && event.Room != nil && event.Participant != nil {
+		profile, err := rc.Service.SuggestMediaProfile(c.Request().Context(), event.Room.Name, event.Participant.Identity)
+		if err != nil {
+			return echo.NewHTTPError(http.StatusBadRequest, err)
+		}
+		err = rc.Service.StartRecording(c.Request().Context(), recording.StartRecordingRequest{
+			Room:        event.Room.Name,
+			Participant: event.Participant.Identity,
+			Profile:     profile,
+		})
+		if err != nil {
+			return echo.NewHTTPError(http.StatusInternalServerError, err)
+		}
+	}
+
+	if event.GetEvent() == "participant_left" && event.Room != nil && event.Participant != nil {
+		err := rc.Service.StopRecording(c.Request().Context(), recording.StopRecordingRequest{
+			Room:        event.Room.Name,
+			Participant: event.Participant.Identity,
+		})
+		if err != nil {
+			return echo.NewHTTPError(http.StatusInternalServerError, err)
+		}
+	}
+
 	return c.NoContent(http.StatusOK)
 }
