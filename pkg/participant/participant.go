@@ -1,6 +1,7 @@
 package participant
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"time"
@@ -25,6 +26,7 @@ type Participant interface {
 }
 
 type participant struct {
+	ctx      context.Context
 	data     ParticipantData
 	state    state
 	uploader upload.Uploader
@@ -44,6 +46,7 @@ type participant struct {
 
 func NewParticipant(identity string, uploader upload.Uploader) Participant {
 	return &participant{
+		ctx: context.TODO(),
 		data: ParticipantData{
 			Identity: identity,
 		},
@@ -65,12 +68,7 @@ func (p *participant) createRecorder(track *webrtc.TrackRemote) (recorder.Record
 
 	fileName := fmt.Sprintf("%s.%s", fileID, fileExt)
 
-	sink, err := recorder.NewFileSink(fileName)
-	if err != nil {
-		return nil, err
-	}
-
-	return recorder.NewRecorder(track.Codec(), sink)
+	return recorder.New(track.Codec(), fileName)
 }
 
 func (p *participant) GetData() ParticipantData {
@@ -112,10 +110,10 @@ func (p *participant) Start() {
 		return
 	}
 	if p.vt != nil && p.vr != nil {
-		p.vr.Start(p.vt)
+		p.vr.Start(p.ctx, p.vt)
 	}
 	if p.at != nil && p.ar != nil {
-		p.ar.Start(p.at)
+		p.ar.Start(p.ctx, p.at)
 	}
 	p.state = stateRecording
 	p.data.Start = time.Now()
@@ -126,10 +124,14 @@ func (p *participant) Stop() {
 		return
 	}
 	if p.vr != nil {
-		p.vr.Stop()
+		if err := p.vr.Stop(); err != nil {
+			logger.Errorw("error stopping video recorder", err)
+		}
 	}
 	if p.ar != nil {
-		p.ar.Stop()
+		if err := p.ar.Stop(); err != nil {
+			logger.Errorw("error stopping audio recorder", err)
+		}
 	}
 	p.state = stateDone
 	p.data.End = time.Now()

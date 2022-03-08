@@ -7,6 +7,7 @@ import (
 	"github.com/cloudgroundcontrol/livekit-recorder/pkg/upload"
 	"github.com/livekit/protocol/logger"
 	lksdk "github.com/livekit/server-sdk-go"
+	"github.com/pion/rtcp"
 	"github.com/pion/webrtc/v3"
 )
 
@@ -126,6 +127,15 @@ func (b *bot) OnTrackSubscribed(track *webrtc.TrackRemote, publication *lksdk.Re
 
 	// Start recording if allowed
 	if canStartRecording {
+		// Send PLI at initial when going to start
+		_, err := publication.Receiver().Transport().WriteRTCP([]rtcp.Packet{
+			&rtcp.PictureLossIndication{
+				MediaSSRC: uint32(track.SSRC()),
+			},
+		})
+		if err != nil {
+			logger.Warnw("cannot write RTCP", err)
+		}
 		p.Start()
 		delete(b.pending, req.Identity)
 	}

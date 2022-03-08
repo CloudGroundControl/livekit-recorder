@@ -2,7 +2,8 @@ package recorder
 
 import (
 	"context"
-	"io"
+	"errors"
+	"time"
 
 	"github.com/livekit/protocol/logger"
 	"github.com/livekit/server-sdk-go/pkg/samplebuilder"
@@ -12,7 +13,7 @@ import (
 )
 
 type Recorder interface {
-	Start(track *webrtc.TrackRemote)
+	Start(context.Context, *webrtc.TrackRemote)
 	Stop() error
 	Sink() Sink
 }
@@ -20,31 +21,59 @@ type Recorder interface {
 type recorder struct {
 	ctx    context.Context
 	cancel context.CancelFunc
-	sink   Sink
-	sb     *samplebuilder.SampleBuilder
-	mw     media.Writer
+	closed chan struct{}
+
+	sink Sink
+	mw   media.Writer
+	sb   *samplebuilder.SampleBuilder
 }
 
-func NewRecorder(codec webrtc.RTPCodecParameters, sink Sink) (Recorder, error) {
-	sb := createSampleBuilder(codec)
+func New(codec webrtc.RTPCodecParameters, filename string) (Recorder, error) {
+	sink, err := NewFileSink(filename)
+	if err != nil {
+		return nil, err
+	}
+	return NewWith(codec, sink)
+}
+
+func NewWith(codec webrtc.RTPCodecParameters, sink Sink) (Recorder, error) {
 	mw, err := createMediaWriter(sink, codec)
 	if err != nil {
 		return nil, err
 	}
-	ctx, cancel := context.WithCancel(context.TODO())
-	return &recorder{ctx, cancel, sink, sb, mw}, nil
+	return &recorder{
+		closed: make(chan struct{}),
+		sink:   sink,
+		mw:     mw,
+		sb:     createSampleBuilder(codec),
+	}, nil
 }
 
-func (r *recorder) Start(track *webrtc.TrackRemote) {
+func (r *recorder) Start(ctx context.Context, track *webrtc.TrackRemote) {
+	// Copy context since it's a good practice
+	r.ctx, r.cancel = context.WithCancel(ctx)
+
+	// Start recording in a goroutine
 	go r.startRecording(track)
 }
+
+const maxWaitDuration = time.Second * 10
+
+var ErrRecorderStopTimeout = errors.New("recorder stop timeout")
 
 func (r *recorder) Stop() error {
 	// Signal goroutine to stop
 	r.cancel()
 
-	// Close the file synchronously.
-	return r.sink.Close()
+	// Wait for goroutine to finish gracefully or timeouts with error
+	for {
+		select {
+		case <-r.closed:
+			return nil
+		case <-time.After(maxWaitDuration):
+			return ErrRecorderStopTimeout
+		}
+	}
 }
 
 func (r *recorder) Sink() Sink {
@@ -54,15 +83,19 @@ func (r *recorder) Sink() Sink {
 func (r *recorder) startRecording(track *webrtc.TrackRemote) {
 	var err error
 	defer func() {
-		// Ignore EOF and sink closed errors
-		if err == io.EOF || err == ErrSinkClosed {
-			err = nil
-		}
-
 		// Log any errors
 		if err != nil {
 			logger.Warnw("recorder error", err)
 		}
+
+		// Close sink
+		err = r.sink.Close()
+		if err != nil {
+			logger.Warnw("error closing sink", err)
+		}
+
+		// Signal recorder has finished cleaning up
+		close(r.closed)
 	}()
 
 	// Process RTP packets forever until stopped

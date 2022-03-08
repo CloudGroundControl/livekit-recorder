@@ -1,6 +1,7 @@
 package recorder
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"os"
@@ -40,7 +41,7 @@ func TestCreateRecorderForVideo(t *testing.T) {
 	}
 	sink := NewBufferSink("test")
 
-	tr, err := NewRecorder(codec, sink)
+	tr, err := NewWith(codec, sink)
 	require.NoError(t, err)
 	require.NotNil(t, tr)
 
@@ -58,7 +59,7 @@ func TestCreateRecorderForAudio(t *testing.T) {
 	}
 	sink := NewBufferSink("test")
 
-	tr, err := NewRecorder(codec, sink)
+	tr, err := NewWith(codec, sink)
 	require.NoError(t, err)
 	require.NotNil(t, tr)
 
@@ -74,7 +75,7 @@ func TestFailCreateRecorderForUnsupportedCodec(t *testing.T) {
 		},
 	}
 	sink := NewBufferSink("test")
-	_, err := NewRecorder(codec, sink)
+	_, err := NewWith(codec, sink)
 	require.ErrorIs(t, err, ErrMediaNotSupported)
 }
 
@@ -87,7 +88,7 @@ func TestWritePacketsWithSampleBuffer(t *testing.T) {
 		},
 	}
 	sink := NewBufferSink("test")
-	tr, _ := NewRecorder(codec, sink)
+	tr, _ := NewWith(codec, sink)
 	rec := promoteRecorder(tr)
 	require.NotNil(t, rec.sb)
 
@@ -108,7 +109,7 @@ func TestWritePacketsWithoutSampleBuffer(t *testing.T) {
 		},
 	}
 	sink := NewBufferSink("test")
-	tr, _ := NewRecorder(codec, sink)
+	tr, _ := NewWith(codec, sink)
 	rec := promoteRecorder(tr)
 
 	// Set sample buffer to be nil
@@ -130,7 +131,7 @@ func TestSinkEquality(t *testing.T) {
 		},
 	}
 	sink := NewBufferSink("test")
-	tr, _ := NewRecorder(codec, sink)
+	tr, _ := NewWith(codec, sink)
 
 	// Expect stored sink is the same as passed sink
 	require.Equal(t, sink, tr.Sink())
@@ -237,26 +238,24 @@ func TestRecorderUsageScenario(t *testing.T) {
 	// -----
 	// Create recorder since we know the codec we'll be publishing
 	// -----
-
-	sink, err := NewFileSink(participantID + "-video.ivf")
-	require.NoError(t, err)
-
-	rec, err := NewRecorder(webrtc.RTPCodecParameters{
+	ctx := context.Background()
+	codec := webrtc.RTPCodecParameters{
 		RTPCodecCapability: webrtc.RTPCodecCapability{
 			MimeType: webrtc.MimeTypeVP8,
 		},
-	}, sink)
+	}
+	rec, err := New(codec, participantID+"-video.ivf")
 	require.NoError(t, err)
 
 	rRoom.Callback.OnTrackSubscribed = func(track *webrtc.TrackRemote, publication *lksdk.RemoteTrackPublication, rp *lksdk.RemoteParticipant) {
-		rec.Start(track)
+		rec.Start(ctx, track)
 	}
 
 	// -----
 	// Let participant publish track for a while,
 	// then stop publishing and recording
 	// -----
-	time.Sleep(time.Second * 2)
+	time.Sleep(time.Second * 10)
 	sampleDone <- struct{}{}
 	rec.Stop()
 
