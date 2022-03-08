@@ -3,8 +3,8 @@ package participant
 import "time"
 
 type ParticipantData struct {
-	Identity string
-	Start    time.Time
-	End      time.Time
-	Output   string
+	Identity string    `json:"identity"`
+	Start    time.Time `json:"start"`
+	End      time.Time `json:"end"`
+	Output   string    `json:"output"`
 }

@@ -30,6 +30,7 @@ type bot struct {
 
 type botCallback struct {
 	RemoveSubscription func(bot string, room string, participant string, req MediaProfile) error
+	SendRecordingData  func(p participant.ParticipantData)
 }
 
 func createBot(id string, url string, token string, callback botCallback) (*bot, error) {
@@ -151,6 +152,9 @@ func (b *bot) stopRecording(identity string) error {
 	// Retrieve the participant and stop recording
 	p := b.participants[identity]
 	p.Stop()
+
+	// Send data via webhook (in background)
+	go b.callback.SendRecordingData(p.GetData())
 
 	// Remove participant before returning
 	defer delete(b.participants, identity)

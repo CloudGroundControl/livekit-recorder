@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"strings"
 
 	"github.com/cloudgroundcontrol/livekit-recorder/pkg/http/rest"
 	"github.com/cloudgroundcontrol/livekit-recorder/pkg/recording"
@@ -28,6 +29,13 @@ func main() {
 	lkAPIKey := getEnvOrFail("LIVEKIT_API_KEY")
 	lkAPISecret := getEnvOrFail("LIVEKIT_API_SECRET")
 	debugMode := os.Getenv("APP_DEBUG")
+	webhookUrls := os.Getenv("WEBHOOK_URLS")
+
+	// Separate the webhooks by comma
+	var webhooks = []string{}
+	if webhookUrls != "" {
+		webhooks = strings.Split(webhookUrls, ",")
+	}
 
 	// Check that ffmpeg is installed
 	_, err := exec.LookPath("ffmpeg")
@@ -50,7 +58,7 @@ func main() {
 	}
 
 	// Initialise recording service
-	service, err := recording.NewService(lkURL, lkAPIKey, lkAPISecret)
+	service, err := recording.NewService(lkURL, lkAPIKey, lkAPISecret, webhooks)
 	if err != nil {
 		log.Fatal(err)
 	}

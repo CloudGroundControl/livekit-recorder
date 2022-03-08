@@ -1,13 +1,19 @@
 package recording
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
+	"net/http"
 	"strings"
 	"sync"
+	"time"
 
+	"github.com/cloudgroundcontrol/livekit-recorder/pkg/participant"
 	"github.com/cloudgroundcontrol/livekit-recorder/pkg/upload"
 	"github.com/livekit/protocol/livekit"
+	"github.com/livekit/protocol/logger"
 	"github.com/livekit/protocol/utils"
 	lksdk "github.com/livekit/server-sdk-go"
 )
@@ -43,6 +49,7 @@ type service struct {
 	auth     *authProvider
 	lksvc    *lksdk.RoomServiceClient
 	uploader upload.Uploader
+	webhooks []string
 }
 
 func httpUrlFromWS(url string) string {
@@ -54,7 +61,7 @@ func httpUrlFromWS(url string) string {
 	return ""
 }
 
-func NewService(url string, apiKey string, apiSecret string) (Service, error) {
+func NewService(url string, apiKey string, apiSecret string, webhooks []string) (Service, error) {
 	auth := createAuthProvider(apiKey, apiSecret)
 	httpUrl := httpUrlFromWS(url)
 	if httpUrl == "" {
@@ -62,11 +69,12 @@ func NewService(url string, apiKey string, apiSecret string) (Service, error) {
 	}
 	lksvc := lksdk.NewRoomServiceClient(httpUrl, apiKey, apiSecret)
 	return &service{
-		url:   url,
-		lock:  sync.Mutex{},
-		bots:  make(map[string]*bot),
-		auth:  auth,
-		lksvc: lksvc,
+		url:      url,
+		lock:     sync.Mutex{},
+		bots:     make(map[string]*bot),
+		auth:     auth,
+		lksvc:    lksvc,
+		webhooks: webhooks,
 	}, nil
 }
 
@@ -108,6 +116,7 @@ func (s *service) StartRecording(ctx context.Context, req StartRecordingRequest)
 		// Create bot
 		b, err := s.createBot(req.Room, botCallback{
 			RemoveSubscription: s.RemoveBotSubscriptionCallback,
+			SendRecordingData:  s.SendRecordingData,
 		})
 		if err != nil {
 			return err
@@ -203,4 +212,28 @@ func (s *service) verifyProfile(profile MediaProfile, tracks []*livekit.TrackInf
 	}
 
 	return nil
+}
+
+func (s *service) SendRecordingData(data participant.ParticipantData) {
+	// Marshal to JSON
+	var err error
+	var body []byte
+	body, err = json.Marshal(data)
+	if err != nil {
+		logger.Warnw("error marshalling payload", err, "participant_data", data)
+	}
+	buffer := bytes.NewBuffer(body)
+
+	// Send data
+	client := http.Client{
+		Timeout: 5 * time.Second,
+	}
+	for _, hook := range s.webhooks {
+		go func(url string) {
+			_, err = client.Post(url, "application/json", buffer)
+			if err != nil {
+				logger.Warnw("error reaching webhook", err, "url", url)
+			}
+		}(hook)
+	}
 }
