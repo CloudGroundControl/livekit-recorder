@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/cloudgroundcontrol/livekit-recorder/pkg/http/rest"
+	"github.com/cloudgroundcontrol/livekit-recorder/pkg/participant"
 	"github.com/cloudgroundcontrol/livekit-recorder/pkg/recording"
 	"github.com/cloudgroundcontrol/livekit-recorder/pkg/upload"
 	"github.com/labstack/echo/v4"
@@ -43,14 +44,28 @@ func main() {
 		log.Fatal(err)
 	}
 
+	// Check if local recordings directory exists, otherwise create one. Also need to check for the right permissions
+	// Value of 0755 is obtained from https://stackoverflow.com/questions/14249467/os-mkdir-and-os-mkdirall-permissions
+	// for webservers.
+	stat, err := os.Stat(participant.RecordingsDir)
+	if os.IsNotExist(err) {
+		err = os.Mkdir(participant.RecordingsDir, 0755)
+	} else if stat.Mode() != 0755 {
+		err = os.Chmod(participant.RecordingsDir, 0755)
+	}
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	// Create S3 uploader only if the environment variables are not empty
 	s3Region := os.Getenv("S3_REGION")
 	s3Bucket := os.Getenv("S3_BUCKET")
 	var uploader upload.Uploader
 	if s3Region != "" && s3Bucket != "" {
 		uploader, err = upload.NewS3Uploader(upload.S3Config{
-			Region: s3Region,
-			Bucket: s3Bucket,
+			Region:    s3Region,
+			Bucket:    s3Bucket,
+			Directory: os.Getenv("S3_DIRECTORY"),
 		})
 		if err != nil {
 			log.Fatal(err)

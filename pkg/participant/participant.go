@@ -13,7 +13,10 @@ import (
 	"github.com/pion/webrtc/v3"
 )
 
+const RecordingsDir = "recordings"
+
 type Participant interface {
+	GetCtx() context.Context
 	GetData() ParticipantData
 	IsVideoRecordable() bool
 	IsAudioRecordable() bool
@@ -66,9 +69,13 @@ func (p *participant) createRecorder(track *webrtc.TrackRemote) (recorder.Record
 		return nil, errors.New("unsupported media")
 	}
 
-	fileName := fmt.Sprintf("%s.%s", fileID, fileExt)
+	fileName := fmt.Sprintf("%s/%s.%s", RecordingsDir, fileID, fileExt)
 
 	return recorder.New(track.Codec(), fileName)
+}
+
+func (p *participant) GetCtx() context.Context {
+	return p.ctx
 }
 
 func (p *participant) GetData() ParticipantData {

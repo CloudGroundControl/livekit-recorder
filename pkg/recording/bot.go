@@ -1,7 +1,9 @@
 package recording
 
 import (
+	"context"
 	"sync"
+	"time"
 
 	"github.com/cloudgroundcontrol/livekit-recorder/pkg/participant"
 	"github.com/cloudgroundcontrol/livekit-recorder/pkg/upload"
@@ -94,6 +96,27 @@ func (b *bot) OnTrackSubscribed(track *webrtc.TrackRemote, publication *lksdk.Re
 	}
 	p := b.participants[req.Identity]
 
+	// Send PLI at intervals
+	go func(ctx context.Context, tr *webrtc.TrackRemote) {
+		ticker := time.NewTicker(time.Second * 5)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				_, err := publication.Receiver().Transport().WriteRTCP([]rtcp.Packet{
+					&rtcp.PictureLossIndication{
+						MediaSSRC: uint32(tr.SSRC()),
+					},
+				})
+				if err != nil {
+					logger.Warnw("cannot send PLI", err)
+				}
+			}
+		}
+	}(p.GetCtx(), track)
+
 	// Register tracks
 	if track.Kind() == webrtc.RTPCodecTypeVideo {
 		if err := p.RegisterVideo(track); err != nil {
@@ -127,15 +150,6 @@ func (b *bot) OnTrackSubscribed(track *webrtc.TrackRemote, publication *lksdk.Re
 
 	// Start recording if allowed
 	if canStartRecording {
-		// Send PLI at initial when going to start
-		_, err := publication.Receiver().Transport().WriteRTCP([]rtcp.Packet{
-			&rtcp.PictureLossIndication{
-				MediaSSRC: uint32(track.SSRC()),
-			},
-		})
-		if err != nil {
-			logger.Warnw("cannot write RTCP", err)
-		}
 		p.Start()
 		delete(b.pending, req.Identity)
 	}

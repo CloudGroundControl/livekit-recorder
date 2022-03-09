@@ -57,7 +57,7 @@ func (r *recorder) Start(ctx context.Context, track *webrtc.TrackRemote) {
 	go r.startRecording(track)
 }
 
-const maxWaitDuration = time.Second * 10
+const maxWaitDuration = time.Second * 3
 
 var ErrRecorderStopTimeout = errors.New("recorder stop timeout")
 

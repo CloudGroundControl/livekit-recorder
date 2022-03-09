@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strings"
 
 	"github.com/cloudgroundcontrol/livekit-recorder/pkg/recorder"
 	"github.com/lithammer/shortuuid/v4"
@@ -82,7 +83,7 @@ func (p *participant) containerise() (string, error) {
 	}
 
 	// Generate file ID
-	fileID := shortuuid.New()
+	fileID := fmt.Sprintf("%s/%s", RecordingsDir, shortuuid.New())
 
 	// Case 1
 	if videoExt == recorder.MediaIVF && audioExt == "" {
@@ -143,7 +144,8 @@ func (p *participant) upload(filename string) error {
 	}
 
 	// Try uploading
-	err = p.uploader.Upload(filename, file)
+	key := strings.ReplaceAll(filename, RecordingsDir+"/", "")
+	err = p.uploader.Upload(key, file)
 	if err != nil {
 		return err
 	}
