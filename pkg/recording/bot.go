@@ -1,9 +1,7 @@
 package recording
 
 import (
-	"context"
 	"sync"
-	"time"
 
 	"github.com/cloudgroundcontrol/livekit-recorder/pkg/participant"
 	"github.com/cloudgroundcontrol/livekit-recorder/pkg/upload"
@@ -89,33 +87,22 @@ func (b *bot) OnTrackSubscribed(track *webrtc.TrackRemote, publication *lksdk.Re
 	}
 	req := b.pending[rp.Identity()]
 
+	// Send feedback to the server for synchronisation
+	publication.Receiver().Transport().WriteRTCP([]rtcp.Packet{
+		&rtcp.TransportLayerNack{
+			MediaSSRC: uint32(track.SSRC()),
+		},
+		&rtcp.PictureLossIndication{
+			MediaSSRC: uint32(track.SSRC()),
+		},
+	})
+
 	// Retrieve the participant. If they don't exist yet, create a new entry
 	_, found = b.participants[req.Identity]
 	if !found {
-		b.participants[req.Identity] = participant.NewParticipant(req.Identity, b.uploader)
+		b.participants[req.Identity] = participant.NewParticipant(req.Identity, b.uploader, rp.WritePLI)
 	}
 	p := b.participants[req.Identity]
-
-	// Send PLI at intervals
-	go func(ctx context.Context, tr *webrtc.TrackRemote) {
-		ticker := time.NewTicker(time.Second * 5)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-ticker.C:
-				_, err := publication.Receiver().Transport().WriteRTCP([]rtcp.Packet{
-					&rtcp.PictureLossIndication{
-						MediaSSRC: uint32(tr.SSRC()),
-					},
-				})
-				if err != nil {
-					logger.Warnw("cannot send PLI", err)
-				}
-			}
-		}
-	}(p.GetCtx(), track)
 
 	// Register tracks
 	if track.Kind() == webrtc.RTPCodecTypeVideo {

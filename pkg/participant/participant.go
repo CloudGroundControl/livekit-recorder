@@ -10,13 +10,14 @@ import (
 	"github.com/cloudgroundcontrol/livekit-recorder/pkg/upload"
 	"github.com/lithammer/shortuuid/v4"
 	"github.com/livekit/protocol/logger"
+	lksdk "github.com/livekit/server-sdk-go"
+	"github.com/livekit/server-sdk-go/pkg/samplebuilder"
 	"github.com/pion/webrtc/v3"
 )
 
 const RecordingsDir = "recordings"
 
 type Participant interface {
-	GetCtx() context.Context
 	GetData() ParticipantData
 	IsVideoRecordable() bool
 	IsAudioRecordable() bool
@@ -33,6 +34,7 @@ type participant struct {
 	data     ParticipantData
 	state    state
 	uploader upload.Uploader
+	pli      lksdk.PLIWriter
 
 	// Filenames
 	vf string
@@ -47,7 +49,7 @@ type participant struct {
 	ar recorder.Recorder
 }
 
-func NewParticipant(identity string, uploader upload.Uploader) Participant {
+func NewParticipant(identity string, uploader upload.Uploader, pli lksdk.PLIWriter) Participant {
 	return &participant{
 		ctx: context.TODO(),
 		data: ParticipantData{
@@ -55,6 +57,7 @@ func NewParticipant(identity string, uploader upload.Uploader) Participant {
 		},
 		state:    stateCreated,
 		uploader: uploader,
+		pli:      pli,
 	}
 }
 
@@ -71,11 +74,9 @@ func (p *participant) createRecorder(track *webrtc.TrackRemote) (recorder.Record
 
 	fileName := fmt.Sprintf("%s/%s.%s", RecordingsDir, fileID, fileExt)
 
-	return recorder.New(track.Codec(), fileName)
-}
-
-func (p *participant) GetCtx() context.Context {
-	return p.ctx
+	return recorder.New(track.Codec(), fileName, samplebuilder.WithPacketDroppedHandler(func() {
+		p.pli(track.SSRC())
+	}))
 }
 
 func (p *participant) GetData() ParticipantData {
@@ -131,14 +132,10 @@ func (p *participant) Stop() {
 		return
 	}
 	if p.vr != nil {
-		if err := p.vr.Stop(); err != nil {
-			logger.Errorw("error stopping video recorder", err)
-		}
+		p.vr.Stop()
 	}
 	if p.ar != nil {
-		if err := p.ar.Stop(); err != nil {
-			logger.Errorw("error stopping audio recorder", err)
-		}
+		p.ar.Stop()
 	}
 	p.state = stateDone
 	p.data.End = time.Now()

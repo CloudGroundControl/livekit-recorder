@@ -54,7 +54,7 @@ func createMediaWriter(out io.Writer, codec webrtc.RTPCodecParameters) (media.Wr
 
 const sampleMaxLate = 200
 
-func createSampleBuilder(codec webrtc.RTPCodecParameters) *samplebuilder.SampleBuilder {
+func createSampleBuilder(codec webrtc.RTPCodecParameters, opts ...samplebuilder.Option) *samplebuilder.SampleBuilder {
 	var depacketizer rtp.Depacketizer
 	switch codec.MimeType {
 	case webrtc.MimeTypeVP8:
@@ -68,5 +68,5 @@ func createSampleBuilder(codec webrtc.RTPCodecParameters) *samplebuilder.SampleB
 	default:
 		return nil
 	}
-	return samplebuilder.New(sampleMaxLate, depacketizer, codec.ClockRate)
+	return samplebuilder.New(sampleMaxLate, depacketizer, codec.ClockRate, opts...)
 }

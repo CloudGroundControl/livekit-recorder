@@ -192,9 +192,11 @@ func TestRecorderUsageScenario(t *testing.T) {
 
 	pRoom, err = lksdk.ConnectToRoomWithToken(url, pToken)
 	require.NoError(t, err)
+	defer pRoom.Disconnect()
 
 	rRoom, err = lksdk.ConnectToRoomWithToken(url, rToken)
 	require.NoError(t, err)
+	defer rRoom.Disconnect()
 
 	// -----
 	// Create track for participant to publish
@@ -244,10 +246,13 @@ func TestRecorderUsageScenario(t *testing.T) {
 			MimeType: webrtc.MimeTypeVP8,
 		},
 	}
-	rec, err := New(codec, participantID+"-video.ivf")
+	var rec Recorder
+	rec, err = New(codec, participantID+"-video.ivf")
 	require.NoError(t, err)
+	require.NotNil(t, rec)
 
 	rRoom.Callback.OnTrackSubscribed = func(track *webrtc.TrackRemote, publication *lksdk.RemoteTrackPublication, rp *lksdk.RemoteParticipant) {
+		require.NotNil(t, rec)
 		rec.Start(ctx, track)
 	}
 
@@ -256,8 +261,14 @@ func TestRecorderUsageScenario(t *testing.T) {
 	// then stop publishing and recording
 	// -----
 	time.Sleep(time.Second * 10)
-	sampleDone <- struct{}{}
+	close(sampleDone)
+
+	require.NotNil(t, rec)
 	rec.Stop()
+
+	// In real-world scenario, once Stop() is invoked, the main function will keep running.
+	// Let's introduce a small delay for the recorder to finish gracefully and improve code coverage
+	time.Sleep(time.Second * 1)
 
 	// Remember to remove video file afterwards
 	os.Remove(participantID + "-video.ivf")
