@@ -1,13 +1,13 @@
 package recorder
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"os"
 	"testing"
 	"time"
 
-	"github.com/cloudgroundcontrol/livekit-recorder/pkg/recorder/internal/static"
 	"github.com/livekit/protocol/auth"
 	lksdk "github.com/livekit/server-sdk-go"
 	"github.com/pion/rtp"
@@ -41,7 +41,7 @@ func TestCreateRecorderForVideo(t *testing.T) {
 	}
 	sink := NewBufferSink("test")
 
-	tr, err := NewTrackRecorder(codec, sink)
+	tr, err := NewWith(codec, sink)
 	require.NoError(t, err)
 	require.NotNil(t, tr)
 
@@ -59,7 +59,7 @@ func TestCreateRecorderForAudio(t *testing.T) {
 	}
 	sink := NewBufferSink("test")
 
-	tr, err := NewTrackRecorder(codec, sink)
+	tr, err := NewWith(codec, sink)
 	require.NoError(t, err)
 	require.NotNil(t, tr)
 
@@ -75,7 +75,7 @@ func TestFailCreateRecorderForUnsupportedCodec(t *testing.T) {
 		},
 	}
 	sink := NewBufferSink("test")
-	_, err := NewTrackRecorder(codec, sink)
+	_, err := NewWith(codec, sink)
 	require.ErrorIs(t, err, ErrMediaNotSupported)
 }
 
@@ -88,7 +88,7 @@ func TestWritePacketsWithSampleBuffer(t *testing.T) {
 		},
 	}
 	sink := NewBufferSink("test")
-	tr, _ := NewTrackRecorder(codec, sink)
+	tr, _ := NewWith(codec, sink)
 	rec := promoteRecorder(tr)
 	require.NotNil(t, rec.sb)
 
@@ -104,16 +104,16 @@ func TestWritePacketsWithSampleBuffer(t *testing.T) {
 func TestWritePacketsWithoutSampleBuffer(t *testing.T) {
 	codec := webrtc.RTPCodecParameters{
 		RTPCodecCapability: webrtc.RTPCodecCapability{
-			// G722 does not have sample buffer depacketizer,
-			// so it won't spawn sample buffer
-			MimeType: webrtc.MimeTypeG722,
+			MimeType: webrtc.MimeTypeVP8,
 			Channels: 1,
 		},
 	}
 	sink := NewBufferSink("test")
-	tr, _ := NewTrackRecorder(codec, sink)
+	tr, _ := NewWith(codec, sink)
 	rec := promoteRecorder(tr)
-	require.Nil(t, rec.sb)
+
+	// Set sample buffer to be nil
+	rec.sb = nil
 
 	// Write multiple packets
 	for i := 0; i < 10; i++ {
@@ -124,29 +124,17 @@ func TestWritePacketsWithoutSampleBuffer(t *testing.T) {
 	}
 }
 
-func TestStopRecordingWithoutStart(t *testing.T) {
+func TestSinkEquality(t *testing.T) {
 	codec := webrtc.RTPCodecParameters{
 		RTPCodecCapability: webrtc.RTPCodecCapability{
 			MimeType: webrtc.MimeTypeVP8,
 		},
 	}
 	sink := NewBufferSink("test")
-	tr, _ := NewTrackRecorder(codec, sink)
-	rec := promoteRecorder(tr)
+	tr, _ := NewWith(codec, sink)
 
-	go func() {
-		// Trigger stop signal
-		rec.Stop()
-
-		// Expect `done` to be closed
-		_, ok := (<-rec.done)
-		require.False(t, ok)
-
-		// Expect `closed` to still be open since we're stopping recording
-		// without starting, so the goroutine to close `rec.closed` is not called
-		_, ok = (<-rec.closed)
-		require.True(t, ok)
-	}()
+	// Expect stored sink is the same as passed sink
+	require.Equal(t, sink, tr.Sink())
 }
 
 func getEnvOrFail(key string) string {
@@ -204,9 +192,11 @@ func TestRecorderUsageScenario(t *testing.T) {
 
 	pRoom, err = lksdk.ConnectToRoomWithToken(url, pToken)
 	require.NoError(t, err)
+	defer pRoom.Disconnect()
 
 	rRoom, err = lksdk.ConnectToRoomWithToken(url, rToken)
 	require.NoError(t, err)
+	defer rRoom.Disconnect()
 
 	// -----
 	// Create track for participant to publish
@@ -221,19 +211,23 @@ func TestRecorderUsageScenario(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	pRoom.LocalParticipant.PublishTrack(sampleTrack, participantID+"-video")
+	publication, err := pRoom.LocalParticipant.PublishTrack(sampleTrack, &lksdk.TrackPublicationOptions{
+		Name: participantID + "-video",
+	})
+	require.NoError(t, err)
 
 	// -----
 	// Publish static media packets until we receive stop signal
 	// -----
 
-	sampleProvider := static.NewProvider()
+	sampleProvider := lksdk.NewNullSampleProvider(90000)
 	sampleDone := make(chan struct{}, 1)
 	go func() {
 		var sample media.Sample
 		for {
 			select {
 			case <-sampleDone:
+				pRoom.LocalParticipant.UnpublishTrack(publication.SID())
 				return
 			default:
 				sample, err = sampleProvider.NextSample()
@@ -246,24 +240,36 @@ func TestRecorderUsageScenario(t *testing.T) {
 	// -----
 	// Create recorder since we know the codec we'll be publishing
 	// -----
-
-	sink := NewBufferSink(participantID + "-video")
-	rec, err := NewTrackRecorder(webrtc.RTPCodecParameters{
+	ctx := context.Background()
+	codec := webrtc.RTPCodecParameters{
 		RTPCodecCapability: webrtc.RTPCodecCapability{
 			MimeType: webrtc.MimeTypeVP8,
 		},
-	}, sink)
+	}
+	var rec Recorder
+	rec, err = New(codec, participantID+"-video.ivf")
 	require.NoError(t, err)
+	require.NotNil(t, rec)
 
 	rRoom.Callback.OnTrackSubscribed = func(track *webrtc.TrackRemote, publication *lksdk.RemoteTrackPublication, rp *lksdk.RemoteParticipant) {
-		rec.Start(track)
+		require.NotNil(t, rec)
+		rec.Start(ctx, track)
 	}
 
 	// -----
 	// Let participant publish track for a while,
 	// then stop publishing and recording
 	// -----
-	time.Sleep(time.Second * 2)
-	sampleDone <- struct{}{}
+	time.Sleep(time.Second * 10)
+	close(sampleDone)
+
+	require.NotNil(t, rec)
 	rec.Stop()
+
+	// In real-world scenario, once Stop() is invoked, the main function will keep running.
+	// Let's introduce a small delay for the recorder to finish gracefully and improve code coverage
+	time.Sleep(time.Second * 1)
+
+	// Remember to remove video file afterwards
+	os.Remove(participantID + "-video.ivf")
 }

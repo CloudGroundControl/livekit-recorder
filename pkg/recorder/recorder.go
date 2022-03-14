@@ -1,76 +1,88 @@
 package recorder
 
 import (
-	"time"
+	"context"
+	"io"
+	"log"
 
-	"github.com/cloudgroundcontrol/livekit-recorder/pkg/samplebuilder"
-	"github.com/livekit/protocol/logger"
+	"github.com/livekit/server-sdk-go/pkg/samplebuilder"
 	"github.com/pion/rtp"
 	"github.com/pion/webrtc/v3"
 	"github.com/pion/webrtc/v3/pkg/media"
 )
 
 type Recorder interface {
-	Start(track *webrtc.TrackRemote)
+	Start(context.Context, *webrtc.TrackRemote)
 	Stop()
-	Sink() RecorderSink
+	Sink() Sink
 }
 
 type recorder struct {
-	sink   RecorderSink
-	done   chan struct{}
-	closed chan struct{}
-	sb     *samplebuilder.SampleBuilder
-	mw     media.Writer
+	ctx    context.Context
+	cancel context.CancelFunc
+
+	sink Sink
+	mw   media.Writer
+	sb   *samplebuilder.SampleBuilder
 }
 
-func NewTrackRecorder(codec webrtc.RTPCodecParameters, sink RecorderSink) (Recorder, error) {
-	done := make(chan struct{}, 1)
-	closed := make(chan struct{}, 1)
-	sb := createSampleBuilder(codec)
+func New(codec webrtc.RTPCodecParameters, filename string, opts ...samplebuilder.Option) (Recorder, error) {
+	sink, err := NewFileSink(filename)
+	if err != nil {
+		return nil, err
+	}
+	return NewWith(codec, sink)
+}
+
+func NewWith(codec webrtc.RTPCodecParameters, sink Sink, opts ...samplebuilder.Option) (Recorder, error) {
 	mw, err := createMediaWriter(sink, codec)
 	if err != nil {
 		return nil, err
 	}
-	return &recorder{sink, done, closed, sb, mw}, nil
+	return &recorder{
+		sink: sink,
+		mw:   mw,
+		sb:   createSampleBuilder(codec, opts...),
+	}, nil
 }
 
-func (r *recorder) Start(track *webrtc.TrackRemote) {
+func (r *recorder) Start(ctx context.Context, track *webrtc.TrackRemote) {
+	// Copy context since it's a good practice
+	r.ctx, r.cancel = context.WithCancel(ctx)
+
+	// Start recording in a goroutine
 	go r.startRecording(track)
 }
 
 func (r *recorder) Stop() {
-	go r.stopRecording()
+	// Signal goroutine to stop
+	r.cancel()
 }
 
-func (r *recorder) Sink() RecorderSink {
+func (r *recorder) Sink() Sink {
 	return r.sink
 }
 
 func (r *recorder) startRecording(track *webrtc.TrackRemote) {
-	// Clean-up process
 	var err error
 	defer func() {
-		// Log error during recording
-		if err != nil {
-			logger.Warnw("error while recording", err)
+		// Log any errors
+		if err != nil && err != io.EOF {
+			log.Println("recorder error: ", err)
 		}
 
 		// Close sink
 		err = r.sink.Close()
 		if err != nil {
-			logger.Warnw("cannot close sink", err)
+			log.Println("sink error: ", err)
 		}
-
-		// Signal that sink has been closed
-		close(r.closed)
 	}()
 
 	// Process RTP packets forever until stopped
 	var packet *rtp.Packet
 	for {
 		select {
-		case <-r.done:
+		case <-r.ctx.Done():
 			return
 		default:
 			// Read RTP stream
@@ -98,23 +110,14 @@ func (r *recorder) writeToSink(p *rtp.Packet) (err error) {
 	r.sb.Push(p)
 
 	// And from the buffered packets, write to sink
-	for _, p := range r.sb.PopPackets() {
-		err = r.mw.WriteRTP(p)
-		if err != nil {
-			return err
+	if packets := r.sb.PopPackets(); packets != nil {
+		for _, p := range packets {
+			err = r.mw.WriteRTP(p)
+			if err != nil {
+				return err
+			}
 		}
 	}
+
 	return nil
-}
-
-func (r *recorder) stopRecording() {
-	// Signal to startRecording() goroutine to end
-	close(r.done)
-
-	// Wait for signal from startRecording() after clean-up is done.
-	// This function must be called in a goroutine or it'll block main thread
-	<-r.closed
-
-	// Introduce a small delay otherwise the end frame of a video track will look chopped on the sides
-	time.Sleep(time.Millisecond * 10)
 }

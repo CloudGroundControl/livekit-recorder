@@ -8,23 +8,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestExtensionG722(t *testing.T) {
-	ext := GetMediaExtension(webrtc.MimeTypeG722)
-	require.Equal(t, MediaOGG, ext)
-}
-
 func TestExtensionOpus(t *testing.T) {
 	ext := GetMediaExtension(webrtc.MimeTypeOpus)
-	require.Equal(t, MediaOGG, ext)
-}
-
-func TestExtensionPCMU(t *testing.T) {
-	ext := GetMediaExtension(webrtc.MimeTypePCMU)
-	require.EqualValues(t, MediaOGG, ext)
-}
-
-func TestExtensionPCMA(t *testing.T) {
-	ext := GetMediaExtension(webrtc.MimeTypePCMA)
 	require.Equal(t, MediaOGG, ext)
 }
 
@@ -50,6 +35,21 @@ func TestExtensionH265GetEmptyString(t *testing.T) {
 
 func TestExtensionAV1GetEmptyString(t *testing.T) {
 	ext := GetMediaExtension(webrtc.MimeTypeAV1)
+	require.Equal(t, MediaExtension(""), ext)
+}
+
+func TestExtensionG722GetEmptyString(t *testing.T) {
+	ext := GetMediaExtension(webrtc.MimeTypeG722)
+	require.Equal(t, MediaExtension(""), ext)
+}
+
+func TestExtensionPCMUGetEmptyString(t *testing.T) {
+	ext := GetMediaExtension(webrtc.MimeTypePCMU)
+	require.Equal(t, MediaExtension(""), ext)
+}
+
+func TestExtensionPCMAGetEmptyString(t *testing.T) {
+	ext := GetMediaExtension(webrtc.MimeTypePCMA)
 	require.Equal(t, MediaExtension(""), ext)
 }
 

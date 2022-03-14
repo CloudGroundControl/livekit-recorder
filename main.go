@@ -5,9 +5,11 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"strings"
 
-	"github.com/cloudgroundcontrol/livekit-recorder/pkg/egress"
 	"github.com/cloudgroundcontrol/livekit-recorder/pkg/http/rest"
+	"github.com/cloudgroundcontrol/livekit-recorder/pkg/participant"
+	"github.com/cloudgroundcontrol/livekit-recorder/pkg/recording"
 	"github.com/cloudgroundcontrol/livekit-recorder/pkg/upload"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
@@ -28,9 +30,29 @@ func main() {
 	lkAPIKey := getEnvOrFail("LIVEKIT_API_KEY")
 	lkAPISecret := getEnvOrFail("LIVEKIT_API_SECRET")
 	debugMode := os.Getenv("APP_DEBUG")
+	webhookUrls := os.Getenv("WEBHOOK_URLS")
+
+	// Separate the webhooks by comma
+	var webhooks = []string{}
+	if webhookUrls != "" {
+		webhooks = strings.Split(webhookUrls, ",")
+	}
 
 	// Check that ffmpeg is installed
 	_, err := exec.LookPath("ffmpeg")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	// Check if local recordings directory exists, otherwise create one. Also need to check for the right permissions
+	// Value of 0755 is obtained from https://stackoverflow.com/questions/14249467/os-mkdir-and-os-mkdirall-permissions
+	// for webservers.
+	stat, err := os.Stat(participant.RecordingsDir)
+	if os.IsNotExist(err) {
+		err = os.Mkdir(participant.RecordingsDir, 0755)
+	} else if stat.Mode() != 0755 {
+		err = os.Chmod(participant.RecordingsDir, 0755)
+	}
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -41,20 +63,29 @@ func main() {
 	var uploader upload.Uploader
 	if s3Region != "" && s3Bucket != "" {
 		uploader, err = upload.NewS3Uploader(upload.S3Config{
-			Region: s3Region,
-			Bucket: s3Bucket,
+			Region:    s3Region,
+			Bucket:    s3Bucket,
+			Directory: os.Getenv("S3_DIRECTORY"),
 		})
 		if err != nil {
 			log.Fatal(err)
 		}
 	}
 
-	// Initialise egress service and controller
-	service, err := egress.NewService(lkURL, lkAPIKey, lkAPISecret, uploader)
+	// Initialise recording service
+	service, err := recording.NewService(lkURL, lkAPIKey, lkAPISecret, webhooks)
 	if err != nil {
 		log.Fatal(err)
 	}
-	controller := rest.NewEgressController(service)
+	service.SetUploader(uploader)
+
+	// Initialise recording controller
+	creds := rest.LiveKitCredentials{
+		BaseURL:   lkURL,
+		APIKey:    lkAPIKey,
+		APISecret: lkAPISecret,
+	}
+	controller := rest.NewRecordingController(creds, service)
 
 	// Initialise server
 	e := echo.New()
@@ -75,6 +106,7 @@ func main() {
 	// Attach egress handlers
 	e.POST("/recordings/start", controller.StartRecording)
 	e.POST("/recordings/stop", controller.StopRecording)
+	e.POST("/recordings/webhooks", controller.ReceiveWebhooks)
 
 	// Start server
 	e.Logger.Fatal(e.Start(":" + port))

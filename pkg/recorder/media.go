@@ -5,7 +5,7 @@ import (
 	"io"
 	"strings"
 
-	"github.com/cloudgroundcontrol/livekit-recorder/pkg/samplebuilder"
+	"github.com/livekit/server-sdk-go/pkg/samplebuilder"
 	"github.com/pion/rtp"
 	"github.com/pion/rtp/codecs"
 	"github.com/pion/webrtc/v3"
@@ -31,10 +31,7 @@ func GetMediaExtension(mimeType string) MediaExtension {
 	if strings.EqualFold(mimeType, webrtc.MimeTypeH264) {
 		return MediaH264
 	}
-	if strings.EqualFold(mimeType, webrtc.MimeTypeG722) ||
-		strings.EqualFold(mimeType, webrtc.MimeTypeOpus) ||
-		strings.EqualFold(mimeType, webrtc.MimeTypePCMA) ||
-		strings.EqualFold(mimeType, webrtc.MimeTypePCMU) {
+	if strings.EqualFold(mimeType, webrtc.MimeTypeOpus) {
 		return MediaOGG
 	}
 	return ""
@@ -55,10 +52,9 @@ func createMediaWriter(out io.Writer, codec webrtc.RTPCodecParameters) (media.Wr
 	}
 }
 
-const sampleMaxLate = 200
-
-func createSampleBuilder(codec webrtc.RTPCodecParameters) *samplebuilder.SampleBuilder {
+func createSampleBuilder(codec webrtc.RTPCodecParameters, opts ...samplebuilder.Option) *samplebuilder.SampleBuilder {
 	var depacketizer rtp.Depacketizer
+	var maxLate uint16 = 1000
 	switch codec.MimeType {
 	case webrtc.MimeTypeVP8:
 		depacketizer = &codecs.VP8Packet{}
@@ -71,5 +67,5 @@ func createSampleBuilder(codec webrtc.RTPCodecParameters) *samplebuilder.SampleB
 	default:
 		return nil
 	}
-	return samplebuilder.New(sampleMaxLate, depacketizer, codec.ClockRate)
+	return samplebuilder.New(maxLate, depacketizer, codec.ClockRate, opts...)
 }

@@ -14,9 +14,23 @@ func TestCreateFileSink(t *testing.T) {
 	require.NotNil(t, sink)
 	require.Equal(t, filename, sink.Name())
 
+	// Cleanup
 	err = sink.Close()
 	require.NoError(t, err)
 	os.Remove(filename)
+}
+
+func TestWriteFileSink(t *testing.T) {
+	filename := "testing.txt"
+	sink, _ := NewFileSink(filename)
+	defer func() {
+		sink.Close()
+		os.Remove(filename)
+	}()
+
+	n, err := sink.Write([]byte("Hello"))
+	require.NoError(t, err)
+	require.Equal(t, len("Hello"), n)
 }
 
 func TestCreateBufferSink(t *testing.T) {

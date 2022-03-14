@@ -4,10 +4,13 @@ Service to record each participant in LiveKit room without transcoding. Prioriti
 
 ## TODO
 
+- [x] Single track recording
 - [x] Add Dockerfile
-- [ ] Upload to S3
-- [ ] Mux video + audio tracks
-- [ ] Debugging
+- [x] Upload to S3
+- [x] Mux video + audio tracks
+- [x] Docker support
+- [] Custom file name
+- [] Job queue
 
 ## Motivation
 
@@ -42,11 +45,11 @@ Next, create a POST request to `/recordings/start` with the body:
 {
     "room": "my-room",
     "participant": "my-participant",
-    "output": "some-name-without-extension"
+    "profile": "av / video / audio"
 }
 ```
 
-After recording for some time, to stop, either disconnect from the room, or create a POST request to `/recordings/start` with the body:
+After recording for some time, to stop, either disconnect from the room, or create a POST request to `/recordings/stop` with the body:
 
 ```
 {
@@ -55,7 +58,19 @@ After recording for some time, to stop, either disconnect from the room, or crea
 }
 ```
 
-You should have a video file called `some-name-without-extension.webm` if you're using <strong>VP8</strong> / <strong>VP9</strong>, or `some-name-without-extension.mp4` if you're using <strong>H264</strong>. For audio track, you should have `some-name-without-extension.ogg`.
+You should have a file in the `recordings/` folder.
+
+## S3 upload
+
+To enable S3 upload, make sure to set the following variables:
+
+```
+S3_REGION=
+S3_BUCKET=
+S3_DIRECTORY=
+```
+
+The variable `S3_DIRECTORY` is optional. For our use case, our bucket stores recordings for different environments. For `S3_DIRECTORY=livekit` and a file named `my-file.mp4`, the resulting file will be saved as `livekit/my-file.mp4` on S3.
 
 ## Issues
 
