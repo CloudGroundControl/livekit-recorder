@@ -131,6 +131,7 @@ func (rc *RecordingController) ReceiveWebhooks(c echo.Context) error {
 			log.Debugf("bot has joined room | identity: %s", event.Participant.Identity)
 			return c.NoContent(http.StatusOK)
 		}
+		log.Debugf("participant has joined room | identity: %s", event.Participant.Identity)
 
 		// Spawn a goroutine that will poll and check that the participant has at least 1 track
 		go func(room string, participant string) {
@@ -195,6 +196,11 @@ func (rc *RecordingController) ReceiveWebhooks(c echo.Context) error {
 	}
 
 	if event.GetEvent() == "participant_left" && event.Room != nil && event.Participant != nil {
+		if strings.HasPrefix(event.Participant.Identity, "RB_") {
+			log.Debugf("bot has left room | identity: %s", event.Participant.Identity)
+			return c.NoContent(http.StatusOK)
+		}
+		log.Debugf("participant has left room | identity: %s", event.Participant.Identity)
 		err := rc.Service.StopRecording(c.Request().Context(), recording.StopRecordingRequest{
 			Room:        event.Room.Name,
 			Participant: event.Participant.Identity,

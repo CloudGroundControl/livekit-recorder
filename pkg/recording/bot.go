@@ -153,11 +153,9 @@ func (b *bot) OnTrackSubscribed(track *webrtc.TrackRemote, publication *lksdk.Re
 }
 
 func (b *bot) OnTrackUnsubscribed(track *webrtc.TrackRemote, publication *lksdk.RemoteTrackPublication, rp *lksdk.RemoteParticipant) {
-	// Stop recording
-	err := b.stopRecording(rp.Identity())
-	if err != nil {
-		log.Warnf("error in stop recording | error: %v, participant: %s", err, rp.Identity())
-	}
+	// Stop recording: ignore recording as the only error is from updating subscription.
+	// In this method, it will always be true as participant has left
+	b.stopRecording(rp.Identity())
 	log.Debugf("stopped recording | participant: %s, type: %s, codec: %v", rp.Identity(), track.Kind().String(), track.Codec().MimeType)
 }
 
