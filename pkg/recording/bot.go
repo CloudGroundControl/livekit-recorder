@@ -5,7 +5,7 @@ import (
 
 	"github.com/cloudgroundcontrol/livekit-recorder/pkg/participant"
 	"github.com/cloudgroundcontrol/livekit-recorder/pkg/upload"
-	"github.com/livekit/protocol/logger"
+	"github.com/labstack/gommon/log"
 	lksdk "github.com/livekit/server-sdk-go"
 	"github.com/pion/rtcp"
 	"github.com/pion/webrtc/v3"
@@ -68,6 +68,7 @@ func (b *bot) pushParticipantRequest(identity string, profile MediaProfile) {
 		Identity: identity,
 		Profile:  profile,
 	}
+	log.Debugf("pushed participant request | participant: %s, profile: %v", identity, profile)
 }
 
 func (b *bot) SetUploader(uploader upload.Uploader) {
@@ -83,12 +84,13 @@ func (b *bot) OnTrackSubscribed(track *webrtc.TrackRemote, publication *lksdk.Re
 	// Check if recorder needs to handle this participant
 	_, found := b.pending[rp.Identity()]
 	if !found {
+		log.Warnf("request not found for participant | participant: %s, codec: %s", rp.Identity(), track.Codec().MimeType)
 		return
 	}
 	req := b.pending[rp.Identity()]
 
 	// Send feedback to the server for synchronisation
-	publication.Receiver().Transport().WriteRTCP([]rtcp.Packet{
+	_, err := publication.Receiver().Transport().WriteRTCP([]rtcp.Packet{
 		&rtcp.TransportLayerNack{
 			MediaSSRC: uint32(track.SSRC()),
 		},
@@ -96,6 +98,9 @@ func (b *bot) OnTrackSubscribed(track *webrtc.TrackRemote, publication *lksdk.Re
 			MediaSSRC: uint32(track.SSRC()),
 		},
 	})
+	if err != nil {
+		log.Errorf("error writing RTCP | error: %v, participant: %s", err, rp.Identity())
+	}
 
 	// Retrieve the participant. If they don't exist yet, create a new entry
 	_, found = b.participants[req.Identity]
@@ -107,15 +112,17 @@ func (b *bot) OnTrackSubscribed(track *webrtc.TrackRemote, publication *lksdk.Re
 	// Register tracks
 	if track.Kind() == webrtc.RTPCodecTypeVideo {
 		if err := p.RegisterVideo(track); err != nil {
-			logger.Warnw("cannot register video", err)
+			log.Errorf("cannot register video | error: %v, participant: %s, track: %s, type: %s, codec: %s", err, rp.Identity(), publication.SID(), track.Kind().String(), track.Codec().MimeType)
 			return
 		}
+		log.Infof("registered video | participant: %s, track: %s, type: %s, codec: %s", rp.Identity(), publication.SID(), track.Kind().String(), track.Codec().MimeType)
 	}
 	if track.Kind() == webrtc.RTPCodecTypeAudio {
 		if err := p.RegisterAudio(track); err != nil {
-			logger.Warnw("cannot register audio", err)
+			log.Errorf("cannot register audio | error: %v, participant: %s, track: %s, type: %s, codec: %s", err, rp.Identity(), publication.SID(), track.Kind().String(), track.Codec().MimeType)
 			return
 		}
+		log.Infof("registered audio | participant: %s, track: %s, type: %s, codec: %s", rp.Identity(), publication.SID(), track.Kind().String(), track.Codec().MimeType)
 	}
 
 	// Decide if we need to start recording or wait.
@@ -138,16 +145,18 @@ func (b *bot) OnTrackSubscribed(track *webrtc.TrackRemote, publication *lksdk.Re
 	// Start recording if allowed
 	if canStartRecording {
 		p.Start()
+		log.Debugf("started recording | participant: %s", rp.Identity())
+
 		delete(b.pending, req.Identity)
+		log.Debugf("removed participant request | participant: %s", rp.Identity())
 	}
 }
 
 func (b *bot) OnTrackUnsubscribed(track *webrtc.TrackRemote, publication *lksdk.RemoteTrackPublication, rp *lksdk.RemoteParticipant) {
-	// Stop recording
-	err := b.stopRecording(rp.Identity())
-	if err != nil {
-		logger.Warnw("cannot stop recording", err)
-	}
+	// Stop recording: ignore recording as the only error is from updating subscription.
+	// In this method, it will always be true as participant has left
+	b.stopRecording(rp.Identity())
+	log.Debugf("stopped recording | participant: %s, type: %s, codec: %v", rp.Identity(), track.Kind().String(), track.Codec().MimeType)
 }
 
 func (b *bot) stopRecording(identity string) error {

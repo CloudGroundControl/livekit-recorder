@@ -7,8 +7,8 @@ import (
 	"strings"
 
 	"github.com/cloudgroundcontrol/livekit-recorder/pkg/recorder"
+	"github.com/labstack/gommon/log"
 	"github.com/lithammer/shortuuid/v4"
-	"github.com/livekit/protocol/logger"
 )
 
 func (p *participant) process() error {
@@ -22,8 +22,9 @@ func (p *participant) process() error {
 			go func() {
 				err := p.upload(p.af)
 				if err != nil {
-					logger.Warnw("cannot upload audio", err)
+					log.Errorf("cannot upload audio | error: %v, output: %s, participant: %s", err, p.data.Output, p.data.Identity)
 				}
+				log.Infof("uploaded audio | output: %s, participant: %s", p.data.Output, p.data.Identity)
 			}()
 		}
 		return nil
@@ -35,17 +36,20 @@ func (p *participant) process() error {
 		return err
 	}
 	p.data.Output = filename
+	log.Debugf("containerised file | output: %s, participant: %s, video: %s, audio: %s", p.data.Output, p.data.Identity, p.vf, p.af)
 
 	// If there are no errors during containerisation, delete the raw media files
 	if p.vf != "" {
 		if err = os.Remove(p.vf); err != nil {
 			return err
 		}
+		log.Debugf("removed raw video | file: %s", p.vf)
 	}
 	if p.af != "" {
 		if err = os.Remove(p.af); err != nil {
 			return err
 		}
+		log.Debugf("removed raw audio | file: %s", p.af)
 	}
 
 	// Check if we want to upload the container file
@@ -54,8 +58,9 @@ func (p *participant) process() error {
 		go func() {
 			err := p.upload(filename)
 			if err != nil {
-				logger.Warnw("cannot upload container", err)
+				log.Errorf("cannot upload container | error: %v, output: %s, participant: %s", err, p.data.Output, p.data.Identity)
 			}
+			log.Infof("uploaded container | output: %s, participant: %s", p.data.Output, p.data.Identity)
 		}()
 	}
 	return nil

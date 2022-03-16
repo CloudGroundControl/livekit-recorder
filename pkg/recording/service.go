@@ -10,10 +10,11 @@ import (
 	"sync"
 	"time"
 
+	"github.com/labstack/gommon/log"
+
 	"github.com/cloudgroundcontrol/livekit-recorder/pkg/participant"
 	"github.com/cloudgroundcontrol/livekit-recorder/pkg/upload"
 	"github.com/livekit/protocol/livekit"
-	"github.com/livekit/protocol/logger"
 	"github.com/livekit/protocol/utils"
 	lksdk "github.com/livekit/server-sdk-go"
 )
@@ -109,11 +110,13 @@ func (s *service) StartRecording(ctx context.Context, req StartRecordingRequest)
 	if err != nil {
 		return err
 	}
+	log.Debugf("requested media profile valid | participant: %s, profile: %v", req.Profile, req.Participant)
 
 	// If profile is valid, check if there is already a bot in the room. If not, create one
 	_, found := s.bots[req.Room]
 	if !found {
 		// Create bot
+		log.Debugf("no bot found in room, creating one | room: %s", req.Room)
 		b, err := s.createBot(req.Room, botCallback{
 			RemoveSubscription: s.RemoveBotSubscriptionCallback,
 			SendRecordingData:  s.SendRecordingData,
@@ -220,7 +223,8 @@ func (s *service) SendRecordingData(data participant.ParticipantData) {
 	var body []byte
 	body, err = json.Marshal(data)
 	if err != nil {
-		logger.Warnw("error marshalling payload", err, "participant_data", data)
+		log.Errorf("error marshalling payload | error: %v, data %v", err, data)
+		return
 	}
 	buffer := bytes.NewBuffer(body)
 
@@ -232,8 +236,9 @@ func (s *service) SendRecordingData(data participant.ParticipantData) {
 		go func(url string) {
 			_, err = client.Post(url, "application/json", buffer)
 			if err != nil {
-				logger.Warnw("error reaching webhook", err, "url", url)
+				log.Errorf("error reaching webhook | error: %v, url: %s", err, url)
 			}
+			log.Infof("sent webhook data | url: %s, data: %v", url, data)
 		}(hook)
 	}
 }
