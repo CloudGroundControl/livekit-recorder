@@ -18,13 +18,15 @@ func createAuthProvider(key string, secret string) *authProvider {
 func (p *authProvider) buildEmptyToken(room string, identity string) (string, error) {
 	at := auth.NewAccessToken(p.APIKey, p.APISecret)
 	f := false
+	t := true
 	grant := &auth.VideoGrant{
 		Room:           room,
 		RoomJoin:       true,
 		CanPublish:     &f,
 		CanPublishData: &f,
-		CanSubscribe:   &f,
+		CanSubscribe:   &t,
 		Hidden:         true,
+		Recorder:       true,
 	}
 	return at.
 		AddGrant(grant).
