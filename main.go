@@ -1,7 +1,6 @@
 package main
 
 import (
-	"log"
 	"net/http"
 	"os"
 	"os/exec"
@@ -13,6 +12,7 @@ import (
 	"github.com/cloudgroundcontrol/livekit-recorder/pkg/upload"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
+	"github.com/labstack/gommon/log"
 )
 
 func getEnvOrFail(key string) string {
@@ -29,8 +29,25 @@ func main() {
 	lkURL := getEnvOrFail("LIVEKIT_URL")
 	lkAPIKey := getEnvOrFail("LIVEKIT_API_KEY")
 	lkAPISecret := getEnvOrFail("LIVEKIT_API_SECRET")
-	debugMode := os.Getenv("APP_DEBUG")
+	logLevel := os.Getenv("LOG_LEVEL")
 	webhookUrls := os.Getenv("WEBHOOK_URLS")
+
+	// Get log verbosity
+	var verbosity log.Lvl
+	switch strings.ToLower(logLevel) {
+	case "debug":
+		verbosity = log.DEBUG
+	case "info":
+		verbosity = log.INFO
+	case "warn":
+		verbosity = log.WARN
+	case "error":
+		fallthrough
+	default:
+		verbosity = log.ERROR
+	}
+	log.SetLevel(verbosity)
+	log.SetHeader("(${short_file}:${line}) ${time_rfc3339} ${level}: ")
 
 	// Separate the webhooks by comma
 	var webhooks = []string{}
@@ -91,9 +108,9 @@ func main() {
 	e := echo.New()
 
 	// Attach middlewares
-	if debugMode == "true" {
-		e.Use(middleware.Logger())
-	}
+	e.Use(middleware.LoggerWithConfig(middleware.LoggerConfig{
+		Format: "${time_rfc3339} ${method} ${uri} ${status} ${error}\n",
+	}))
 
 	// Attach handlers
 	e.GET("/", func(c echo.Context) error {

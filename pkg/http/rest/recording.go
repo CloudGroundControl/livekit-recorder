@@ -8,9 +8,9 @@ import (
 
 	"github.com/cloudgroundcontrol/livekit-recorder/pkg/recording"
 	"github.com/labstack/echo/v4"
+	"github.com/labstack/gommon/log"
 	"github.com/livekit/protocol/auth"
 	"github.com/livekit/protocol/livekit"
-	"github.com/livekit/protocol/logger"
 	"github.com/livekit/protocol/webhook"
 	"google.golang.org/protobuf/encoding/protojson"
 )
@@ -21,7 +21,7 @@ type LiveKitCredentials struct {
 	APISecret string
 }
 
-type recordingController struct {
+type RecordingController struct {
 	creds LiveKitCredentials
 	recording.Service
 }
@@ -37,13 +37,13 @@ type StopRecordingRequest struct {
 	Participant string `json:"participant"`
 }
 
-func NewRecordingController(creds LiveKitCredentials, service recording.Service) recordingController {
-	return recordingController{creds, service}
+func NewRecordingController(creds LiveKitCredentials, service recording.Service) RecordingController {
+	return RecordingController{creds, service}
 }
 
 var ErrEmptyFields = errors.New("one or more fields is empty")
 
-func (rc *recordingController) StartRecording(c echo.Context) error {
+func (rc *RecordingController) StartRecording(c echo.Context) error {
 	// Bind request data
 	data := new(StartRecordingRequest)
 	if err := c.Bind(data); err != nil {
@@ -82,7 +82,7 @@ func (rc *recordingController) StartRecording(c echo.Context) error {
 	return c.NoContent(http.StatusOK)
 }
 
-func (rc *recordingController) StopRecording(c echo.Context) error {
+func (rc *RecordingController) StopRecording(c echo.Context) error {
 	// Bind request data
 	data := new(StopRecordingRequest)
 	if err := c.Bind(data); err != nil {
@@ -107,7 +107,7 @@ func (rc *recordingController) StopRecording(c echo.Context) error {
 	return c.NoContent(http.StatusOK)
 }
 
-func (rc *recordingController) ReceiveWebhooks(c echo.Context) error {
+func (rc *RecordingController) ReceiveWebhooks(c echo.Context) error {
 	authProvider := auth.NewFileBasedKeyProviderFromMap(map[string]string{
 		rc.creds.APIKey: rc.creds.APISecret,
 	})
@@ -138,14 +138,14 @@ func (rc *recordingController) ReceiveWebhooks(c echo.Context) error {
 
 				// Handle polling errors
 				if err != nil {
-					logger.Warnw("error checking participant tracks", err)
+					log.Errorf("webhook cannot check tracks | error: %v, participant: %s", err, event.Participant.Name)
 					return
 				}
 
 				// Start recording
 				var profile, err = rc.Service.SuggestMediaProfile(ctx, event.Room.Name, event.Participant.Identity)
 				if err != nil {
-					logger.Warnw("cannot suggest profile", err)
+					log.Errorf("webhook cannot suggest profile | error: %v, participant: %s", err, event.Participant.Name)
 					return
 				}
 				err = rc.Service.StartRecording(ctx, recording.StartRecordingRequest{
@@ -154,7 +154,7 @@ func (rc *recordingController) ReceiveWebhooks(c echo.Context) error {
 					Profile:     profile,
 				})
 				if err != nil {
-					logger.Warnw("cannot start recording", err)
+					log.Error("webhook cannot start recording | error: %v, participant: %s", err, event.Participant.Name)
 				}
 			}()
 

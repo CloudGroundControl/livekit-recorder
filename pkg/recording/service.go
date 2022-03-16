@@ -10,10 +10,11 @@ import (
 	"sync"
 	"time"
 
+	"github.com/labstack/gommon/log"
+
 	"github.com/cloudgroundcontrol/livekit-recorder/pkg/participant"
 	"github.com/cloudgroundcontrol/livekit-recorder/pkg/upload"
 	"github.com/livekit/protocol/livekit"
-	"github.com/livekit/protocol/logger"
 	"github.com/livekit/protocol/utils"
 	lksdk "github.com/livekit/server-sdk-go"
 )
@@ -220,7 +221,8 @@ func (s *service) SendRecordingData(data participant.ParticipantData) {
 	var body []byte
 	body, err = json.Marshal(data)
 	if err != nil {
-		logger.Warnw("error marshalling payload", err, "participant_data", data)
+		log.Errorf("error marshalling payload | error: %v, data %v", err, data)
+		return
 	}
 	buffer := bytes.NewBuffer(body)
 
@@ -232,7 +234,7 @@ func (s *service) SendRecordingData(data participant.ParticipantData) {
 		go func(url string) {
 			_, err = client.Post(url, "application/json", buffer)
 			if err != nil {
-				logger.Warnw("error reaching webhook", err, "url", url)
+				log.Errorf("error reaching webhook | error: %v, url: %s", err, url)
 			}
 		}(hook)
 	}

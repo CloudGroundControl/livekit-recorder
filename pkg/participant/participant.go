@@ -8,8 +8,8 @@ import (
 
 	"github.com/cloudgroundcontrol/livekit-recorder/pkg/recorder"
 	"github.com/cloudgroundcontrol/livekit-recorder/pkg/upload"
+	"github.com/labstack/gommon/log"
 	"github.com/lithammer/shortuuid/v4"
-	"github.com/livekit/protocol/logger"
 	lksdk "github.com/livekit/server-sdk-go"
 	"github.com/livekit/server-sdk-go/pkg/samplebuilder"
 	"github.com/pion/webrtc/v3"
@@ -145,6 +145,6 @@ func (p *participant) Stop() {
 	// Meanwhile, uploading is done in the background via goroutine
 	err := p.process()
 	if err != nil {
-		logger.Errorw("post processing error", err)
+		log.Error("post processing error, ", err)
 	}
 }

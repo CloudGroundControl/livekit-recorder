@@ -7,8 +7,8 @@ import (
 	"strings"
 
 	"github.com/cloudgroundcontrol/livekit-recorder/pkg/recorder"
+	"github.com/labstack/gommon/log"
 	"github.com/lithammer/shortuuid/v4"
-	"github.com/livekit/protocol/logger"
 )
 
 func (p *participant) process() error {
@@ -22,7 +22,7 @@ func (p *participant) process() error {
 			go func() {
 				err := p.upload(p.af)
 				if err != nil {
-					logger.Warnw("cannot upload audio", err)
+					log.Errorf("cannot upload audio | error: %v, output: %s, participant: %s", err, p.data.Output, p.data.Identity)
 				}
 			}()
 		}
@@ -54,7 +54,7 @@ func (p *participant) process() error {
 		go func() {
 			err := p.upload(filename)
 			if err != nil {
-				logger.Warnw("cannot upload container", err)
+				log.Errorf("cannot upload container | error: %v, output: %s, participant: %s", err, p.data.Output, p.data.Identity)
 			}
 		}()
 	}

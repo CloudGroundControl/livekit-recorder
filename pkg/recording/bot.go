@@ -5,7 +5,7 @@ import (
 
 	"github.com/cloudgroundcontrol/livekit-recorder/pkg/participant"
 	"github.com/cloudgroundcontrol/livekit-recorder/pkg/upload"
-	"github.com/livekit/protocol/logger"
+	"github.com/labstack/gommon/log"
 	lksdk "github.com/livekit/server-sdk-go"
 	"github.com/pion/rtcp"
 	"github.com/pion/webrtc/v3"
@@ -107,13 +107,13 @@ func (b *bot) OnTrackSubscribed(track *webrtc.TrackRemote, publication *lksdk.Re
 	// Register tracks
 	if track.Kind() == webrtc.RTPCodecTypeVideo {
 		if err := p.RegisterVideo(track); err != nil {
-			logger.Warnw("cannot register video", err)
+			log.Warnf("cannot register video | error: %v, track: %s, participant: %s, codec: %s", err, publication.SID(), rp.Identity(), track.Codec().MimeType)
 			return
 		}
 	}
 	if track.Kind() == webrtc.RTPCodecTypeAudio {
 		if err := p.RegisterAudio(track); err != nil {
-			logger.Warnw("cannot register audio", err)
+			log.Warnf("cannot register audio | error: %v, track: %s, participant: %s, codec: %s", err, publication.SID(), rp.Identity(), track.Codec().MimeType)
 			return
 		}
 	}
@@ -146,7 +146,7 @@ func (b *bot) OnTrackUnsubscribed(track *webrtc.TrackRemote, publication *lksdk.
 	// Stop recording
 	err := b.stopRecording(rp.Identity())
 	if err != nil {
-		logger.Warnw("cannot stop recording", err)
+		log.Warnf("error in stop recording | error: %v, participant: %s", err, rp.Identity())
 	}
 }
 
