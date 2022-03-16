@@ -7,7 +7,6 @@ import (
 	"github.com/cloudgroundcontrol/livekit-recorder/pkg/upload"
 	"github.com/labstack/gommon/log"
 	lksdk "github.com/livekit/server-sdk-go"
-	"github.com/pion/rtcp"
 	"github.com/pion/webrtc/v3"
 )
 
@@ -43,7 +42,7 @@ func createBot(id string, url string, token string, callback botCallback) (*bot,
 		callback:     callback,
 	}
 
-	room, err := lksdk.ConnectToRoomWithToken(url, token)
+	room, err := lksdk.ConnectToRoomWithToken(url, token, lksdk.WithAutoSubscribe(false))
 	if err != nil {
 		return nil, err
 	}
@@ -88,19 +87,6 @@ func (b *bot) OnTrackSubscribed(track *webrtc.TrackRemote, publication *lksdk.Re
 		return
 	}
 	req := b.pending[rp.Identity()]
-
-	// Send feedback to the server for synchronisation
-	_, err := publication.Receiver().Transport().WriteRTCP([]rtcp.Packet{
-		&rtcp.TransportLayerNack{
-			MediaSSRC: uint32(track.SSRC()),
-		},
-		&rtcp.PictureLossIndication{
-			MediaSSRC: uint32(track.SSRC()),
-		},
-	})
-	if err != nil {
-		log.Errorf("error writing RTCP | error: %v, participant: %s", err, rp.Identity())
-	}
 
 	// Retrieve the participant. If they don't exist yet, create a new entry
 	_, found = b.participants[req.Identity]
