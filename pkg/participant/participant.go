@@ -145,6 +145,6 @@ func (p *participant) Stop() {
 	// Meanwhile, uploading is done in the background via goroutine
 	err := p.process()
 	if err != nil {
-		log.Error("post processing error, ", err)
+		log.Errorf("error in post processing | error: %v, participant: %s", err, p.data.Identity)
 	}
 }

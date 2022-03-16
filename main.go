@@ -109,7 +109,7 @@ func main() {
 
 	// Attach middlewares
 	e.Use(middleware.LoggerWithConfig(middleware.LoggerConfig{
-		Format: "${time_rfc3339} ${method} ${uri} ${status} ${error}\n",
+		Format: "(${host}) ${time_rfc3339} ${level}: ${method} ${uri} ${status} ${error}\n",
 	}))
 
 	// Attach handlers

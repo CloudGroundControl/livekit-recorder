@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/cloudgroundcontrol/livekit-recorder/pkg/recording"
@@ -122,8 +123,15 @@ func (rc *RecordingController) ReceiveWebhooks(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusInternalServerError, err)
 	}
 
+	log.Infof("received webhook | type: %v", event.Event)
+
 	// Handle events
 	if event.GetEvent() == "participant_joined" && event.Room != nil && event.Participant != nil {
+		if strings.HasPrefix(event.Participant.Identity, "RB_") {
+			log.Debugf("bot has joined room | identity: %s", event.Participant.Identity)
+			return c.NoContent(http.StatusOK)
+		}
+
 		// Spawn a goroutine that will poll and check that the participant has at least 1 track
 		go func(room string, participant string) {
 			ctx := context.TODO()
@@ -145,9 +153,10 @@ func (rc *RecordingController) ReceiveWebhooks(c echo.Context) error {
 				// Start recording
 				var profile, err = rc.Service.SuggestMediaProfile(ctx, event.Room.Name, event.Participant.Identity)
 				if err != nil {
-					log.Errorf("webhook cannot suggest profile | error: %v, participant: %s", err, event.Participant.Name)
+					log.Errorf("webhook cannot suggest profile | error: %v, participant: %s", err, event.Participant.Identity)
 					return
 				}
+				log.Debugf("received start recording request | room: %s, participant: %s, profile: %v", event.Room.Name, event.Participant.Name, profile)
 				err = rc.Service.StartRecording(ctx, recording.StartRecordingRequest{
 					Room:        event.Room.Name,
 					Participant: event.Participant.Identity,
@@ -179,6 +188,7 @@ func (rc *RecordingController) ReceiveWebhooks(c echo.Context) error {
 						return
 					}
 					close(done)
+					return
 				}
 			}
 		}(event.Room.Name, event.Participant.Identity)
