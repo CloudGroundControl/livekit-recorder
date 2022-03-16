@@ -172,13 +172,11 @@ func (rc *RecordingController) ReceiveWebhooks(c echo.Context) error {
 						Room:     room,
 						Identity: participant,
 					})
+					if err == nil && len(pi.Tracks) < 1 {
+						err = errors.New("participant has 0 tracks")
+					}
 					if err != nil {
 						return
-					} else if len(pi.Tracks) < 1 {
-						err = errors.New("participant tracks are not available yet")
-						if err != nil {
-							return
-						}
 					}
 					close(done)
 				}
