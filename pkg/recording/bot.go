@@ -29,8 +29,7 @@ type bot struct {
 }
 
 type botCallback struct {
-	RemoveSubscription func(bot string, room string, participant string, req MediaProfile) error
-	SendRecordingData  func(p participant.ParticipantData)
+	SendRecordingData func(p participant.ParticipantData)
 }
 
 func createBot(id string, url string, token string, callback botCallback) (*bot, error) {
@@ -145,14 +144,14 @@ func (b *bot) OnTrackUnsubscribed(track *webrtc.TrackRemote, publication *lksdk.
 	log.Debugf("stopped recording | participant: %s, type: %s, codec: %v", rp.Identity(), track.Kind().String(), track.Codec().MimeType)
 }
 
-func (b *bot) stopRecording(identity string) error {
+func (b *bot) stopRecording(identity string) {
 	b.lock.Lock()
 	defer b.lock.Unlock()
 
 	// Check that the participant exists
 	_, found := b.participants[identity]
 	if !found {
-		return nil
+		return
 	}
 
 	// Retrieve the participant and stop recording
@@ -163,21 +162,15 @@ func (b *bot) stopRecording(identity string) error {
 	go b.callback.SendRecordingData(p.GetData())
 
 	// Remove participant before returning
-	defer delete(b.participants, identity)
+	delete(b.participants, identity)
+}
 
-	// Find out media profile
-	var profile MediaProfile
-	switch {
-	case p.IsVideoRecordable() && p.IsAudioRecordable():
-		profile = MediaMuxedAV
-	case p.IsVideoRecordable():
-		profile = MediaVideoOnly
-	case p.IsAudioRecordable():
-		profile = MediaAudioOnly
-	default:
-		return ErrUnknownMediaProfile
+func (b *bot) disconnect() {
+	b.lock.Lock()
+	defer b.lock.Unlock()
+
+	for _, p := range b.participants {
+		p.Stop()
 	}
-
-	// Remove subscription
-	return b.callback.RemoveSubscription(b.id, b.room.Name, identity, profile)
+	b.room.Disconnect()
 }

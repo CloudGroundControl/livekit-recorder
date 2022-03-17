@@ -11,6 +11,7 @@ WORKDIR /build/
 RUN go mod download
 
 # Finally, build the Go app
+RUN apk add git
 RUN go build -o livekit-recorder .
 # ----------
 
