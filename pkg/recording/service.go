@@ -22,7 +22,6 @@ import (
 type StartRecordingRequest struct {
 	Room        string
 	Participant string
-	Profile     MediaProfile
 }
 
 type StopRecordingRequest struct {
@@ -33,9 +32,9 @@ type StopRecordingRequest struct {
 type Service interface {
 	StartRecording(ctx context.Context, req StartRecordingRequest) error
 	StopRecording(ctx context.Context, req StopRecordingRequest) error
-	SuggestMediaProfile(ctx context.Context, room string, identity string) (MediaProfile, error)
 	SetUploader(uploader upload.Uploader)
 	LKRoomService() *lksdk.RoomServiceClient
+	DisconnectFrom(room string)
 }
 
 type service struct {
@@ -89,28 +88,23 @@ func (s *service) LKRoomService() *lksdk.RoomServiceClient {
 	return s.lksvc
 }
 
-func (s *service) StartRecording(ctx context.Context, req StartRecordingRequest) error {
+func (s *service) DisconnectFrom(room string) {
 	s.lock.Lock()
 	defer s.lock.Unlock()
 
-	// Obtain participant info based on identity and the room they're in
-	pi, err := s.lksvc.GetParticipant(ctx, &livekit.RoomParticipantIdentity{
-		Room:     req.Room,
-		Identity: req.Participant,
-	})
-	if err != nil {
-		return err
+	_, ok := s.bots[room]
+	if !ok {
+		return
 	}
 
-	// Get tracks to subscribe to according to requested profile
-	tracks := s.getProfileTracks(req.Profile, pi.Tracks)
+	b := s.bots[room]
+	b.disconnect()
+	delete(s.bots, room)
+}
 
-	// Verify the desired profile with the tracks being subscribed
-	err = s.verifyProfile(req.Profile, tracks)
-	if err != nil {
-		return err
-	}
-	log.Debugf("requested media profile valid | participant: %s, profile: %v", req.Profile, req.Participant)
+func (s *service) StartRecording(ctx context.Context, req StartRecordingRequest) error {
+	s.lock.Lock()
+	defer s.lock.Unlock()
 
 	// If profile is valid, check if there is already a bot in the room. If not, create one
 	_, found := s.bots[req.Room]
@@ -118,8 +112,7 @@ func (s *service) StartRecording(ctx context.Context, req StartRecordingRequest)
 		// Create bot
 		log.Debugf("no bot found in room, creating one | room: %s", req.Room)
 		b, err := s.createBot(req.Room, botCallback{
-			RemoveSubscription: s.RemoveBotSubscriptionCallback,
-			SendRecordingData:  s.SendRecordingData,
+			SendRecordingData: s.SendRecordingData,
 		})
 		if err != nil {
 			return err
@@ -135,20 +128,41 @@ func (s *service) StartRecording(ctx context.Context, req StartRecordingRequest)
 	// Retrieve the bot
 	b := s.bots[req.Room]
 
-	// Request participant to be recorded
-	b.pushParticipantRequest(req.Participant, req.Profile)
-
-	// Extract track SIDs for updating subscription
-	var sids []string
-	for _, t := range tracks {
-		sids = append(sids, t.Sid)
+	// Get participant info
+	pi, err := s.lksvc.GetParticipant(ctx, &livekit.RoomParticipantIdentity{
+		Room:     req.Room,
+		Identity: req.Participant,
+	})
+	if err != nil {
+		return err
 	}
+
+	// Determine media profile
+	tracksMap := make(map[livekit.TrackType]bool)
+	tracksSid := []string{}
+	for _, t := range pi.Tracks {
+		tracksMap[t.Type] = true
+		tracksSid = append(tracksSid, t.Sid)
+	}
+	var profile MediaProfile
+	if tracksMap[livekit.TrackType_VIDEO] && tracksMap[livekit.TrackType_AUDIO] {
+		profile = MediaMuxedAV
+	} else if tracksMap[livekit.TrackType_VIDEO] {
+		profile = MediaVideoOnly
+	} else if tracksMap[livekit.TrackType_AUDIO] {
+		profile = MediaAudioOnly
+	} else {
+		return errors.New("cannot suggest media profile")
+	}
+
+	// Request participant to be recorded
+	b.pushParticipantRequest(req.Participant, profile)
 
 	// Update subscription
 	return s.updateTrackSubscriptions(ctx, UpdateTrackSubscriptionsRequest{
 		Room:     req.Room,
 		Identity: b.id,
-		SIDs:     sids,
+		SIDs:     tracksSid,
 		Subcribe: true,
 	})
 }
@@ -167,7 +181,28 @@ func (s *service) StopRecording(ctx context.Context, req StopRecordingRequest) e
 	b := s.bots[req.Room]
 
 	// Stop recorder
-	return b.stopRecording(req.Participant)
+	b.stopRecording(req.Participant)
+
+	// Get track SIDs for the participant
+	pi, err := s.lksvc.GetParticipant(ctx, &livekit.RoomParticipantIdentity{
+		Room:     req.Room,
+		Identity: req.Participant,
+	})
+	if err != nil {
+		return err
+	}
+	var trackSids []string
+	for _, t := range pi.Tracks {
+		trackSids = append(trackSids, t.Sid)
+	}
+
+	// Remove subscription
+	return s.updateTrackSubscriptions(ctx, UpdateTrackSubscriptionsRequest{
+		Room:     req.Room,
+		Identity: b.id,
+		SIDs:     trackSids,
+		Subcribe: false,
+	})
 }
 
 func (s *service) createBot(room string, callback botCallback) (*bot, error) {
@@ -181,40 +216,6 @@ func (s *service) createBot(room string, callback botCallback) (*bot, error) {
 
 	// Create bot
 	return createBot(id, s.url, token, callback)
-}
-
-func (s *service) verifyProfile(profile MediaProfile, tracks []*livekit.TrackInfo) error {
-	// Build a map with track kind
-	var kind lksdk.TrackKind = ""
-	tracksMap := make(map[lksdk.TrackKind]*livekit.TrackInfo)
-	for _, track := range tracks {
-		if track.Type == livekit.TrackType_VIDEO {
-			kind = lksdk.TrackKindVideo
-		} else if track.Type == livekit.TrackType_AUDIO {
-			kind = lksdk.TrackKindAudio
-		}
-		if kind != "" {
-			tracksMap[kind] = track
-		}
-	}
-
-	// Check number of tracks / track type matches requested profile
-	switch profile {
-	case MediaVideoOnly:
-		if tracksMap[lksdk.TrackKindVideo] == nil {
-			return errors.New("requesting video only, but did not receive video track")
-		}
-	case MediaAudioOnly:
-		if tracksMap[lksdk.TrackKindAudio] == nil {
-			return errors.New("requesting audio only, but did not receive audio track")
-		}
-	case MediaMuxedAV:
-		if tracksMap[lksdk.TrackKindVideo] == nil || tracksMap[lksdk.TrackKindAudio] == nil {
-			return errors.New("requesting both video & audio, but did not receive complete tracks")
-		}
-	}
-
-	return nil
 }
 
 func (s *service) SendRecordingData(data participant.ParticipantData) {

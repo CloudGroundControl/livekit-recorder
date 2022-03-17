@@ -30,7 +30,6 @@ type RecordingController struct {
 type StartRecordingRequest struct {
 	Room        string `json:"room"`
 	Participant string `json:"participant"`
-	Profile     string `json:"profile"`
 }
 
 type StopRecordingRequest struct {
@@ -56,24 +55,10 @@ func (rc *RecordingController) StartRecording(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, ErrEmptyFields)
 	}
 
-	// Get profile
-	var profile recording.MediaProfile
-	var err error
-	if data.Profile != "" {
-		profile, err = recording.ParseMediaProfile(data.Profile)
-
-	} else {
-		profile, err = rc.Service.SuggestMediaProfile(c.Request().Context(), data.Room, data.Participant)
-	}
-	if err != nil {
-		return echo.NewHTTPError(http.StatusBadRequest, err)
-	}
-
 	// Call service
-	err = rc.Service.StartRecording(c.Request().Context(), recording.StartRecordingRequest{
+	err := rc.Service.StartRecording(c.Request().Context(), recording.StartRecordingRequest{
 		Room:        data.Room,
 		Participant: data.Participant,
-		Profile:     profile,
 	})
 	if err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, err)
@@ -133,62 +118,58 @@ func (rc *RecordingController) ReceiveWebhooks(c echo.Context) error {
 		}
 		log.Debugf("participant has joined room | identity: %s", event.Participant.Identity)
 
-		// Spawn a goroutine that will poll and check that the participant has at least 1 track
+		// Use goroutine to poll and check that the participant is in ready state
 		go func(room string, participant string) {
-			ctx := context.TODO()
-			deadline := time.After(time.Second * 10)
-			ticker := time.NewTicker(time.Second * 2)
-			done := make(chan struct{}, 1)
-
+			var state = event.Participant.State
 			var err error
+			ctx := context.TODO()
+			ticker := time.NewTicker(time.Second * 2)
+			deadline := time.After(time.Second * 10)
+
+			log.Debugf("participant state: %s | identity: %s", state.String(), participant)
+
 			defer func() {
-				// Stop timer
+				// Stop ticker
 				ticker.Stop()
 
-				// Handle polling errors
+				// Handle error
 				if err != nil {
-					log.Errorf("webhook cannot check tracks | error: %v, participant: %s", err, event.Participant.Name)
+					log.Errorf("cannot start recording | error: %v, room: %s, participant: %s", err, room, participant)
 					return
 				}
 
 				// Start recording
-				var profile, err = rc.Service.SuggestMediaProfile(ctx, event.Room.Name, event.Participant.Identity)
-				if err != nil {
-					log.Errorf("webhook cannot suggest profile | error: %v, participant: %s", err, event.Participant.Identity)
-					return
-				}
-				log.Debugf("received start recording request | room: %s, participant: %s, profile: %v", event.Room.Name, event.Participant.Name, profile)
+				log.Debugf("received start recording request | room: %s, participant: %s", room, participant)
 				err = rc.Service.StartRecording(ctx, recording.StartRecordingRequest{
-					Room:        event.Room.Name,
-					Participant: event.Participant.Identity,
-					Profile:     profile,
+					Room:        room,
+					Participant: participant,
 				})
 				if err != nil {
-					log.Error("webhook cannot start recording | error: %v, participant: %s", err, event.Participant.Name)
+					log.Errorf("webhook cannot start recording | error: %v, participant: %s", err, participant)
 				}
 			}()
 
-			// Block forever until participant has at least 1 track or until it's past the deadline.
-			// In between ticks, it will make an API call to check for participants
+			// Check state periodically: only start recording if participant state is ACTIVE
+			var p *livekit.ParticipantInfo
 			for {
 				select {
-				case <-done:
-					return
-				case <-deadline:
-					err = errors.New("too long")
-					return
 				case <-ticker.C:
-					pi, err := rc.LKRoomService().GetParticipant(ctx, &livekit.RoomParticipantIdentity{
+					p, err = rc.LKRoomService().GetParticipant(ctx, &livekit.RoomParticipantIdentity{
 						Room:     room,
 						Identity: participant,
 					})
-					if err == nil && len(pi.Tracks) < 1 {
-						err = errors.New("participant has 0 tracks")
-					}
 					if err != nil {
 						return
 					}
-					close(done)
+					state = p.State
+					log.Debugf("participant state: %s | identity: %s", state.String(), participant)
+
+					// Stop polling only if the participant's state is ACTIVE, meaning they are already publishing video
+					if state == livekit.ParticipantInfo_ACTIVE {
+						return
+					}
+				case <-deadline:
+					err = errors.New("too long")
 					return
 				}
 			}
@@ -201,13 +182,10 @@ func (rc *RecordingController) ReceiveWebhooks(c echo.Context) error {
 			return c.NoContent(http.StatusOK)
 		}
 		log.Debugf("participant has left room | identity: %s", event.Participant.Identity)
-		err := rc.Service.StopRecording(c.Request().Context(), recording.StopRecordingRequest{
-			Room:        event.Room.Name,
-			Participant: event.Participant.Identity,
-		})
-		if err != nil {
-			return echo.NewHTTPError(http.StatusInternalServerError, err)
-		}
+	}
+
+	if event.GetEvent() == "room_finished" && event.Room != nil {
+		rc.Service.DisconnectFrom(event.Room.Name)
 	}
 
 	return c.NoContent(http.StatusOK)
