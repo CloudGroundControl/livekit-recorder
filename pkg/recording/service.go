@@ -131,7 +131,7 @@ func (s *service) StartRecording(ctx context.Context, req StartRecordingRequest)
 	// Ensure that the bot can see all the tracks
 	go func() {
 		ctx := context.TODO()
-		deadline := time.After(time.Second * 10)
+		deadline := time.After(time.Minute * 5)
 		ticker := time.NewTicker(time.Second * 2)
 
 		var err error
