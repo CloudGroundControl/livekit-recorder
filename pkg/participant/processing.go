@@ -18,6 +18,7 @@ func (p *participant) process() error {
 
 		// Check if we want to upload the audio file
 		if p.uploader != nil {
+			p.data.Output = strings.ReplaceAll(p.af, RecordingsDir+"/", "")
 			p.data.Output = fmt.Sprintf("%s/%s", p.uploader.GetDirectory(), p.data.Output)
 			go func() {
 				err := p.upload(p.af)
@@ -54,6 +55,7 @@ func (p *participant) process() error {
 
 	// Check if we want to upload the container file
 	if p.uploader != nil {
+		p.data.Output = strings.ReplaceAll(filename, RecordingsDir+"/", "")
 		p.data.Output = fmt.Sprintf("%s/%s", p.uploader.GetDirectory(), p.data.Output)
 		go func() {
 			err := p.upload(filename)

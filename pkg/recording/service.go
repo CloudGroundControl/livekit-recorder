@@ -128,43 +128,75 @@ func (s *service) StartRecording(ctx context.Context, req StartRecordingRequest)
 	// Retrieve the bot
 	b := s.bots[req.Room]
 
-	// Get participant info
-	pi, err := s.lksvc.GetParticipant(ctx, &livekit.RoomParticipantIdentity{
-		Room:     req.Room,
-		Identity: req.Participant,
-	})
-	if err != nil {
-		return err
-	}
+	// Ensure that the bot can see all the tracks
+	go func() {
+		ctx := context.TODO()
+		deadline := time.After(time.Minute * 5)
+		ticker := time.NewTicker(time.Second * 2)
 
-	// Determine media profile
-	tracksMap := make(map[livekit.TrackType]bool)
-	tracksSid := []string{}
-	for _, t := range pi.Tracks {
-		tracksMap[t.Type] = true
-		tracksSid = append(tracksSid, t.Sid)
-	}
-	var profile MediaProfile
-	if tracksMap[livekit.TrackType_VIDEO] && tracksMap[livekit.TrackType_AUDIO] {
-		profile = MediaMuxedAV
-	} else if tracksMap[livekit.TrackType_VIDEO] {
-		profile = MediaVideoOnly
-	} else if tracksMap[livekit.TrackType_AUDIO] {
-		profile = MediaAudioOnly
-	} else {
-		return errors.New("cannot suggest media profile")
-	}
+		var err error
+		defer func() {
+			// Stop ticker
+			ticker.Stop()
 
-	// Request participant to be recorded
-	b.pushParticipantRequest(req.Participant, profile)
+			// Handle errors
+			if err != nil {
+				log.Errorf("cannot start recording | error: %v, participant: %s", err, req.Participant)
+			}
+		}()
 
-	// Update subscription
-	return s.updateTrackSubscriptions(ctx, UpdateTrackSubscriptionsRequest{
-		Room:     req.Room,
-		Identity: b.id,
-		SIDs:     tracksSid,
-		Subcribe: true,
-	})
+		var pi *livekit.ParticipantInfo
+		for {
+			select {
+			case <-deadline:
+				err = errors.New("too long")
+				return
+			case <-ticker.C:
+				// Get participant info
+				pi, err = s.lksvc.GetParticipant(ctx, &livekit.RoomParticipantIdentity{
+					Room:     req.Room,
+					Identity: req.Participant,
+				})
+				if err != nil {
+					return
+				}
+				log.Debugf("participant exists | participant: %s, num tracks: %d", pi.Identity, len(pi.Tracks))
+
+				// Determine media profile
+				tracksMap := make(map[livekit.TrackType]bool)
+				tracksSid := []string{}
+				for _, t := range pi.Tracks {
+					tracksMap[t.Type] = true
+					tracksSid = append(tracksSid, t.Sid)
+				}
+				var profile MediaProfile
+				if tracksMap[livekit.TrackType_VIDEO] && tracksMap[livekit.TrackType_AUDIO] {
+					profile = MediaMuxedAV
+				} else if tracksMap[livekit.TrackType_VIDEO] {
+					profile = MediaVideoOnly
+				} else if tracksMap[livekit.TrackType_AUDIO] {
+					profile = MediaAudioOnly
+				} else {
+					log.Debugf("not seeing any tracks yet | participant: %s", req.Participant)
+					continue
+				}
+
+				// Request participant to be recorded
+				b.pushParticipantRequest(req.Participant, profile)
+
+				// Update subscription
+				err = s.updateTrackSubscriptions(ctx, UpdateTrackSubscriptionsRequest{
+					Room:     req.Room,
+					Identity: b.id,
+					SIDs:     tracksSid,
+					Subcribe: true,
+				})
+				return
+			}
+		}
+	}()
+
+	return nil
 }
 
 func (s *service) StopRecording(ctx context.Context, req StopRecordingRequest) error {
