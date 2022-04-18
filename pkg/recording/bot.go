@@ -1,6 +1,7 @@
 package recording
 
 import (
+	"github.com/cloudgroundcontrol/livekit-recorder/pkg/pipeline"
 	"sync"
 
 	"github.com/cloudgroundcontrol/livekit-recorder/pkg/participant"
@@ -23,7 +24,7 @@ type bot struct {
 	pending map[string]ParticipantRequest
 
 	// Key: identity
-	participants map[string]participant.Participant
+	pipelines map[string]pipeline.Pipeline
 
 	callback botCallback
 }
@@ -34,11 +35,11 @@ type botCallback struct {
 
 func createBot(id string, url string, token string, callback botCallback) (*bot, error) {
 	b := &bot{
-		id:           id,
-		lock:         sync.Mutex{},
-		pending:      make(map[string]ParticipantRequest),
-		participants: make(map[string]participant.Participant),
-		callback:     callback,
+		id:        id,
+		lock:      sync.Mutex{},
+		pending:   make(map[string]ParticipantRequest),
+		pipelines: make(map[string]pipeline.Pipeline),
+		callback:  callback,
 	}
 
 	room, err := lksdk.ConnectToRoomWithToken(url, token, lksdk.WithAutoSubscribe(false))
@@ -87,54 +88,14 @@ func (b *bot) OnTrackSubscribed(track *webrtc.TrackRemote, publication *lksdk.Re
 	}
 	req := b.pending[rp.Identity()]
 
-	// Retrieve the participant. If they don't exist yet, create a new entry
-	_, found = b.participants[req.Identity]
-	if !found {
-		b.participants[req.Identity] = participant.NewParticipant(req.Identity, b.uploader, rp.WritePLI)
-	}
-	p := b.participants[req.Identity]
-
-	// Register tracks
-	if track.Kind() == webrtc.RTPCodecTypeVideo {
-		if err := p.RegisterVideo(track); err != nil {
-			log.Errorf("cannot register video | error: %v, participant: %s, track: %s, type: %s, codec: %s", err, rp.Identity(), publication.SID(), track.Kind().String(), track.Codec().MimeType)
-			return
-		}
-		log.Infof("registered video | participant: %s, track: %s, type: %s, codec: %s", rp.Identity(), publication.SID(), track.Kind().String(), track.Codec().MimeType)
-	}
-	if track.Kind() == webrtc.RTPCodecTypeAudio {
-		if err := p.RegisterAudio(track); err != nil {
-			log.Errorf("cannot register audio | error: %v, participant: %s, track: %s, type: %s, codec: %s", err, rp.Identity(), publication.SID(), track.Kind().String(), track.Codec().MimeType)
-			return
-		}
-		log.Infof("registered audio | participant: %s, track: %s, type: %s, codec: %s", rp.Identity(), publication.SID(), track.Kind().String(), track.Codec().MimeType)
+	p, err := pipeline.NewTrackPipeline(track)
+	if err != nil {
+		log.Errorf("cannot create track pipeline: %s", err)
+		return
 	}
 
-	// Decide if we need to start recording or wait.
-	var canStartRecording = false
-	switch req.Profile {
-	case MediaAudioOnly:
-		if p.IsAudioRecordable() {
-			canStartRecording = true
-		}
-	case MediaVideoOnly:
-		if p.IsVideoRecordable() {
-			canStartRecording = true
-		}
-	case MediaMuxedAV:
-		if p.IsVideoRecordable() && p.IsAudioRecordable() {
-			canStartRecording = true
-		}
-	}
-
-	// Start recording if allowed
-	if canStartRecording {
-		p.Start()
-		log.Debugf("started recording | participant: %s", rp.Identity())
-
-		delete(b.pending, req.Identity)
-		log.Debugf("removed participant request | participant: %s", rp.Identity())
-	}
+	b.pipelines[req.Identity] = p
+	p.Start()
 }
 
 func (b *bot) OnTrackUnsubscribed(track *webrtc.TrackRemote, publication *lksdk.RemoteTrackPublication, rp *lksdk.RemoteParticipant) {
@@ -149,27 +110,27 @@ func (b *bot) stopRecording(identity string) {
 	defer b.lock.Unlock()
 
 	// Check that the participant exists
-	_, found := b.participants[identity]
+	_, found := b.pipelines[identity]
 	if !found {
 		return
 	}
 
 	// Retrieve the participant and stop recording
-	p := b.participants[identity]
+	p := b.pipelines[identity]
 	p.Stop()
 
 	// Send data via webhook (in background)
-	go b.callback.SendRecordingData(p.GetData())
+	//go b.callback.SendRecordingData(p.GetData())
 
 	// Remove participant before returning
-	delete(b.participants, identity)
+	delete(b.pipelines, identity)
 }
 
 func (b *bot) disconnect() {
 	b.lock.Lock()
 	defer b.lock.Unlock()
 
-	for _, p := range b.participants {
+	for _, p := range b.pipelines {
 		p.Stop()
 	}
 	b.room.Disconnect()

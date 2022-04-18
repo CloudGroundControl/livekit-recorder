@@ -1,9 +1,12 @@
 package main
 
 import (
+	"github.com/tinyzimmer/go-glib/glib"
 	"net/http"
 	"os"
 	"os/exec"
+	"os/signal"
+	"runtime"
 	"strings"
 
 	"github.com/cloudgroundcontrol/livekit-recorder/pkg/http/rest"
@@ -21,6 +24,10 @@ func getEnvOrFail(key string) string {
 		log.Fatalf("%s not set", key)
 	}
 	return val
+}
+
+func init() {
+	runtime.LockOSThread()
 }
 
 func main() {
@@ -124,6 +131,22 @@ func main() {
 	e.POST("/recordings/start", controller.StartRecording)
 	e.POST("/recordings/stop", controller.StopRecording)
 	e.POST("/recordings/webhooks", controller.ReceiveWebhooks)
+
+	stopChan := make(chan os.Signal, 1)
+	signal.Notify(stopChan, os.Interrupt, os.Kill)
+
+	var gstLoop *glib.MainLoop
+	go func() {
+		gstLoop = glib.NewMainLoop(glib.MainContextDefault(), false)
+		gstLoop.Run()
+	}()
+	go func() {
+		select {
+		case <-stopChan:
+			gstLoop.Quit()
+			return
+		}
+	}()
 
 	// Start server
 	e.Logger.Fatal(e.Start(":" + port))

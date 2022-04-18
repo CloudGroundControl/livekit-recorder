@@ -14,7 +14,11 @@ require (
 	github.com/pion/transport v0.13.0
 	github.com/pion/webrtc/v3 v3.1.25-0.20220225075517-37e16a3b15a3
 	github.com/stretchr/testify v1.7.0
+	github.com/tinyzimmer/go-glib v0.0.24
+	github.com/tinyzimmer/go-gst v0.2.32
 )
+
+require github.com/mattn/go-pointer v0.0.1 // indirect
 
 require (
 	github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.3.0 // indirect
