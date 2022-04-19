@@ -133,12 +133,12 @@ func (i *IVFWriter) writeHeader() error {
 		copy(header[8:], "AV01")
 	}
 
-	binary.LittleEndian.PutUint16(header[12:], 720) // Width in pixels
-	binary.LittleEndian.PutUint16(header[14:], 480) // Height in pixels
-	binary.LittleEndian.PutUint32(header[16:], 30)  // Framerate denominator
-	binary.LittleEndian.PutUint32(header[20:], 1)   // Framerate numerator
-	binary.LittleEndian.PutUint32(header[24:], 900) // Frame count, will be updated on first Close() call
-	binary.LittleEndian.PutUint32(header[28:], 0)   // Unused
+	binary.LittleEndian.PutUint16(header[12:], uint16(i.width))  // Width in pixels
+	binary.LittleEndian.PutUint16(header[14:], uint16(i.height)) // Height in pixels
+	binary.LittleEndian.PutUint32(header[16:], i.framerateDen)   // Framerate denominator
+	binary.LittleEndian.PutUint32(header[20:], i.framerateNum)   // Framerate numerator
+	binary.LittleEndian.PutUint32(header[24:], 900)              // Frame count, will be updated on first Close() call
+	binary.LittleEndian.PutUint32(header[28:], 0)                // Unused
 
 	_, err := i.ioWriter.Write(header)
 	return err
