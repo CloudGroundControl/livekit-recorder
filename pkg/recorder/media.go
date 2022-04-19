@@ -42,7 +42,10 @@ var ErrMediaNotSupported = errors.New("media not supported")
 func createMediaWriter(out io.Writer, codec webrtc.RTPCodecParameters) (media.Writer, error) {
 	switch GetMediaExtension(codec.MimeType) {
 	case MediaIVF:
-		return ivfwriter.NewWith(out)
+		return ivfwriter.NewWith(out,
+			ivfwriter.WithClockRate(codec.ClockRate),
+			ivfwriter.WithFrameRate(30, 1),
+			ivfwriter.WithResolution(720, 480))
 	case MediaH264:
 		return h264writer.NewWith(out), nil
 	case MediaOGG:

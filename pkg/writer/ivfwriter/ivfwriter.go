@@ -8,10 +8,12 @@ import (
 	"errors"
 	"io"
 	"os"
+	"time"
 
 	"github.com/pion/rtp"
 	"github.com/pion/rtp/codecs"
 	"github.com/pion/rtp/pkg/frame"
+	"go.uber.org/atomic"
 )
 
 var (
@@ -41,6 +43,33 @@ type IVFWriter struct {
 
 	// AV1
 	av1Frame frame.AV1
+
+	// Config
+	width        uint32
+	height       uint32
+	framerateDen uint32
+	framerateNum uint32
+	clockRate    uint32
+
+	// Timestamp
+	cs         *clockSync
+	synced     bool
+	tsOffset   int64
+	nsOffset   int64
+	conversion int64
+}
+
+// See usage in writeFrame()
+type clockSync struct {
+	startTime atomic.Int64
+}
+
+func (c *clockSync) GetOrSetStartTime(t int64) int64 {
+	swapped := c.startTime.CAS(0, t)
+	if swapped {
+		return t
+	}
+	return c.startTime.Load()
 }
 
 // New builds a new IVF writer
@@ -66,12 +95,19 @@ func NewWith(out io.Writer, opts ...Option) (*IVFWriter, error) {
 	writer := &IVFWriter{
 		ioWriter:     out,
 		seenKeyFrame: false,
+		cs:           &clockSync{},
+		synced:       false,
 	}
 
 	for _, o := range opts {
 		if err := o(writer); err != nil {
 			return nil, err
 		}
+	}
+
+	// Update conversion only if clockRate is set by user
+	if writer.clockRate != 0 {
+		writer.conversion = 1e9 / int64(writer.clockRate)
 	}
 
 	if !writer.isAV1 && !writer.isVP8 {
@@ -108,10 +144,26 @@ func (i *IVFWriter) writeHeader() error {
 	return err
 }
 
-func (i *IVFWriter) writeFrame(frame []byte) error {
+func (i *IVFWriter) writeFrame(frame []byte, pkt *rtp.Packet) error {
+	// The code for synchronising clock & calculating PTS is credited to David Colburn (@frostbyte73 on GitHub)
+
+	// Synchronise clock
+	if !i.synced {
+		now := time.Now().UnixNano()
+		startTime := i.cs.GetOrSetStartTime(now)
+		i.nsOffset = now - startTime
+		i.tsOffset = int64(pkt.Timestamp)
+		i.synced = true
+	}
+
+	// Calculate PTS
+	cyclesElapsed := int64(pkt.Timestamp) - i.tsOffset
+	nanoSecondsElapsed := cyclesElapsed * i.conversion
+	pts := time.Duration(nanoSecondsElapsed + i.nsOffset)
+
 	frameHeader := make([]byte, 12)
-	binary.LittleEndian.PutUint32(frameHeader[0:], uint32(len(frame))) // Frame length
-	binary.LittleEndian.PutUint64(frameHeader[4:], i.count)            // PTS
+	binary.LittleEndian.PutUint32(frameHeader[0:], uint32(len(frame)))        // Frame length
+	binary.LittleEndian.PutUint64(frameHeader[4:], uint64(pts.Nanoseconds())) // PTS
 	i.count++
 
 	if _, err := i.ioWriter.Write(frameHeader); err != nil {
@@ -152,7 +204,7 @@ func (i *IVFWriter) WriteRTP(packet *rtp.Packet) error {
 			return nil
 		}
 
-		if err := i.writeFrame(i.currentFrame); err != nil {
+		if err := i.writeFrame(i.currentFrame, packet); err != nil {
 			return err
 		}
 		i.currentFrame = nil
@@ -168,7 +220,7 @@ func (i *IVFWriter) WriteRTP(packet *rtp.Packet) error {
 		}
 
 		for j := range obus {
-			if err := i.writeFrame(obus[j]); err != nil {
+			if err := i.writeFrame(obus[j], packet); err != nil {
 				return err
 			}
 		}
@@ -227,6 +279,29 @@ func WithCodec(mimeType string) Option {
 			return errNoSuchCodec
 		}
 
+		return nil
+	}
+}
+
+func WithClockRate(clockRate uint32) Option {
+	return func(i *IVFWriter) error {
+		i.clockRate = clockRate
+		return nil
+	}
+}
+
+func WithResolution(width uint32, height uint32) Option {
+	return func(i *IVFWriter) error {
+		i.width = width
+		i.height = height
+		return nil
+	}
+}
+
+func WithFrameRate(den uint32, num uint32) Option {
+	return func(i *IVFWriter) error {
+		i.framerateDen = den
+		i.framerateNum = num
 		return nil
 	}
 }

@@ -16,6 +16,8 @@ require (
 	github.com/stretchr/testify v1.7.0
 )
 
+require go.uber.org/atomic v1.9.0 // indirect
+
 require (
 	github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.3.0 // indirect
 	github.com/aws/aws-sdk-go-v2/credentials v1.9.0 // indirect
