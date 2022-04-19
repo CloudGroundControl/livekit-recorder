@@ -10,7 +10,7 @@ require (
 	github.com/labstack/echo/v4 v4.6.3
 	github.com/livekit/protocol v0.11.14-0.20220223195254-d8c251e13231
 	github.com/livekit/server-sdk-go v0.9.1
-	github.com/pion/rtp v1.7.4
+	github.com/pion/rtp v1.7.13
 	github.com/pion/transport v0.13.0
 	github.com/pion/webrtc/v3 v3.1.25-0.20220225075517-37e16a3b15a3
 	github.com/stretchr/testify v1.7.0
