@@ -2,7 +2,6 @@ package recorder
 
 import (
 	"context"
-	"io"
 	"log"
 
 	"github.com/livekit/server-sdk-go/pkg/samplebuilder"
@@ -67,7 +66,7 @@ func (r *recorder) startRecording(track *webrtc.TrackRemote) {
 	var err error
 	defer func() {
 		// Log any errors
-		if err != nil && err != io.EOF {
+		if err != nil {
 			log.Println("recorder error: ", err)
 		}
 
@@ -79,6 +78,7 @@ func (r *recorder) startRecording(track *webrtc.TrackRemote) {
 	}()
 
 	// Process RTP packets forever until stopped
+	// If we're encountering an error, skip that particular frame
 	var packet *rtp.Packet
 	for {
 		select {
@@ -88,13 +88,13 @@ func (r *recorder) startRecording(track *webrtc.TrackRemote) {
 			// Read RTP stream
 			packet, _, err = track.ReadRTP()
 			if err != nil {
-				return
+				continue
 			}
 
 			// Write packet to sink
 			err = r.writeToSink(packet)
 			if err != nil {
-				return
+				continue
 			}
 		}
 	}
